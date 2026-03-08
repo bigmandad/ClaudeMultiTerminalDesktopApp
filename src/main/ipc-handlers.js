@@ -463,6 +463,88 @@ function registerIpcHandlers(ipcMain) {
     return { success: true };
   });
 
+  // ── Usage JSON (from Claude CLI) ─────────────────────────
+
+  ipcMain.handle('usage:readCliUsage', () => {
+    // Try reading ~/.claude/usage.json or ~/.claude/statsig/usage
+    const possiblePaths = [
+      path.join(os.homedir(), '.claude', 'usage.json'),
+      path.join(os.homedir(), '.claude', 'statsig', 'usage.json')
+    ];
+    for (const p of possiblePaths) {
+      try {
+        if (fs.existsSync(p)) {
+          return JSON.parse(fs.readFileSync(p, 'utf-8'));
+        }
+      } catch (e) { /* skip */ }
+    }
+    return null;
+  });
+
+  // ── Plugins Detection ─────────────────────────────────────
+
+  ipcMain.handle('plugins:detect', () => {
+    const results = { mcpServers: {}, plugins: [], settings: {} };
+
+    // Read MCP servers from global config
+    try {
+      const globalConfig = readGlobalConfig();
+      results.mcpServers = globalConfig || {};
+    } catch (e) { /* skip */ }
+
+    // Read Claude settings for enabled plugins
+    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+    try {
+      if (fs.existsSync(settingsPath)) {
+        results.settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      }
+    } catch (e) { /* skip */ }
+
+    // Scan for installed plugins in common locations
+    const pluginDirs = [
+      path.join(os.homedir(), '.claude', 'plugins'),
+      path.join(os.homedir(), '.claude', 'commands'),
+    ];
+
+    for (const dir of pluginDirs) {
+      try {
+        if (fs.existsSync(dir)) {
+          const items = fs.readdirSync(dir);
+          for (const item of items) {
+            const itemPath = path.join(dir, item);
+            const stat = fs.statSync(itemPath);
+            if (stat.isDirectory()) {
+              // Check for plugin.json
+              const pluginJsonPath = path.join(itemPath, 'plugin.json');
+              if (fs.existsSync(pluginJsonPath)) {
+                try {
+                  const pluginJson = JSON.parse(fs.readFileSync(pluginJsonPath, 'utf-8'));
+                  results.plugins.push({
+                    name: pluginJson.name || item,
+                    description: pluginJson.description || '',
+                    path: itemPath,
+                    type: 'plugin'
+                  });
+                } catch (e) {
+                  results.plugins.push({ name: item, path: itemPath, type: 'plugin', description: 'Plugin directory' });
+                }
+              }
+            } else if (item.endsWith('.md') || item.endsWith('.js')) {
+              results.plugins.push({
+                name: item.replace(/\.(md|js)$/, ''),
+                path: itemPath,
+                type: item.endsWith('.md') ? 'command' : 'script',
+                description: `Custom ${item.endsWith('.md') ? 'command' : 'script'}`
+              });
+            }
+          }
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    return results;
+  });
+
   // ── App State ───────────────────────────────────────────
 
   ipcMain.handle('appState:get', (event, key) => {

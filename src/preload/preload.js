@@ -42,7 +42,13 @@ contextBridge.exposeInMainWorld('api', {
     record: (entry) => ipcRenderer.invoke('usage:record', entry),
     totals: () => ipcRenderer.invoke('usage:totals'),
     monthly: () => ipcRenderer.invoke('usage:monthly'),
-    bySession: (id) => ipcRenderer.invoke('usage:bySession', id)
+    bySession: (id) => ipcRenderer.invoke('usage:bySession', id),
+    readCliUsage: () => ipcRenderer.invoke('usage:readCliUsage')
+  },
+
+  // ── Plugins Detection ──────────────────────────────────
+  plugins: {
+    detect: () => ipcRenderer.invoke('plugins:detect')
   },
 
   // ── File System ──────────────────────────────────────────
