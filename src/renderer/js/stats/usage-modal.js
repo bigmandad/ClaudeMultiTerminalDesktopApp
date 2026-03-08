@@ -7,6 +7,52 @@ let modalEl = null;
 
 export function initUsageModal() {
   events.on('stats:open', () => showModal());
+
+  // Periodically refresh mini limit bars (every 30s)
+  refreshLimitBars();
+  setInterval(refreshLimitBars, 30000);
+}
+
+async function refreshLimitBars() {
+  try {
+    const cliUsage = await window.api.usage.readCliUsage();
+    const totals = await window.api.usage.totals();
+
+    // Update mini HR bar from CLI usage data
+    const hrBar = document.getElementById('hr-bar');
+    const wkBar = document.getElementById('wk-bar');
+
+    if (cliUsage) {
+      // Try to extract hourly/weekly usage from CLI data
+      const hourlyUsed = cliUsage.hourly_tokens_used || cliUsage.tokens_this_hour || 0;
+      const hourlyLimit = cliUsage.hourly_token_limit || cliUsage.hourly_limit || 500000;
+      const weeklyUsed = cliUsage.weekly_tokens_used || cliUsage.tokens_this_week || 0;
+      const weeklyLimit = cliUsage.weekly_token_limit || cliUsage.weekly_limit || 5000000;
+
+      updateMiniBar(hrBar, hourlyUsed, hourlyLimit);
+      updateMiniBar(wkBar, weeklyUsed, weeklyLimit);
+    } else if (totals) {
+      // Fallback: use our DB stats as rough estimate
+      const totalTokens = (totals.total_input || 0) + (totals.total_output || 0);
+      // Show something meaningful
+      updateMiniBar(hrBar, 0, 100);
+      updateMiniBar(wkBar, totalTokens > 0 ? 25 : 0, 100);
+    }
+  } catch (e) {
+    console.log('[UsageModal] refreshLimitBars error:', e.message);
+  }
+}
+
+function updateMiniBar(barEl, used, limit) {
+  if (!barEl) return;
+  const fill = barEl.querySelector('.mini-fill');
+  if (!fill) return;
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  fill.style.width = pct + '%';
+  fill.className = 'mini-fill';
+  if (pct > 85) fill.classList.add('critical');
+  else if (pct > 60) fill.classList.add('warning');
+  barEl.title = `${formatNumber(used)} / ${formatNumber(limit)} tokens (${pct}%)`;
 }
 
 function createModal() {
@@ -66,43 +112,58 @@ async function renderTab(tab) {
   if (!content) return;
 
   switch (tab) {
-    case 'limits':
+    case 'limits': {
+      const cliUsage = await window.api.usage.readCliUsage();
+      const hourlyUsed = cliUsage?.hourly_tokens_used || cliUsage?.tokens_this_hour || 0;
+      const hourlyLimit = cliUsage?.hourly_token_limit || cliUsage?.hourly_limit || 500000;
+      const weeklyUsed = cliUsage?.weekly_tokens_used || cliUsage?.tokens_this_week || 0;
+      const weeklyLimit = cliUsage?.weekly_token_limit || cliUsage?.weekly_limit || 5000000;
+      const dailyUsed = cliUsage?.daily_messages || cliUsage?.messages_today || 0;
+      const dailyLimit = cliUsage?.daily_message_limit || cliUsage?.message_limit || 1000;
+
+      const hrPct = hourlyLimit > 0 ? Math.round((hourlyUsed / hourlyLimit) * 100) : 0;
+      const wkPct = weeklyLimit > 0 ? Math.round((weeklyUsed / weeklyLimit) * 100) : 0;
+      const dyPct = dailyLimit > 0 ? Math.round((dailyUsed / dailyLimit) * 100) : 0;
+
+      const barClass = (pct) => pct > 85 ? 'critical' : pct > 60 ? 'warning' : 'healthy';
+
       content.innerHTML = `
         <div class="limit-bar">
           <div class="limit-bar-header">
             <span class="limit-bar-label">Hourly Token Limit</span>
-            <span class="limit-bar-value">-- / --</span>
+            <span class="limit-bar-value">${formatNumber(hourlyUsed)} / ${formatNumber(hourlyLimit)}</span>
           </div>
           <div class="limit-bar-track">
-            <div class="limit-bar-fill healthy" style="width:0%"></div>
+            <div class="limit-bar-fill ${barClass(hrPct)}" style="width:${hrPct}%"></div>
           </div>
-          <div class="limit-bar-info">Rolling 60-minute window</div>
+          <div class="limit-bar-info">Rolling 60-minute window (${hrPct}%)</div>
         </div>
         <div class="limit-bar">
           <div class="limit-bar-header">
             <span class="limit-bar-label">Weekly Token Limit</span>
-            <span class="limit-bar-value">-- / --</span>
+            <span class="limit-bar-value">${formatNumber(weeklyUsed)} / ${formatNumber(weeklyLimit)}</span>
           </div>
           <div class="limit-bar-track">
-            <div class="limit-bar-fill healthy" style="width:0%"></div>
+            <div class="limit-bar-fill ${barClass(wkPct)}" style="width:${wkPct}%"></div>
           </div>
-          <div class="limit-bar-info">Resets Monday 00:00 UTC</div>
+          <div class="limit-bar-info">Resets Monday 00:00 UTC (${wkPct}%)</div>
         </div>
         <div class="limit-bar">
           <div class="limit-bar-header">
             <span class="limit-bar-label">Daily Messages</span>
-            <span class="limit-bar-value">-- / --</span>
+            <span class="limit-bar-value">${dailyUsed} / ${dailyLimit}</span>
           </div>
           <div class="limit-bar-track">
-            <div class="limit-bar-fill healthy" style="width:0%"></div>
+            <div class="limit-bar-fill ${barClass(dyPct)}" style="width:${dyPct}%"></div>
           </div>
-          <div class="limit-bar-info">Resets every 24h</div>
+          <div class="limit-bar-info">Resets every 24h (${dyPct}%)</div>
         </div>
         <div style="margin-top:16px;padding:10px;background:var(--bg-deep);border-radius:var(--radius-sm);font-size:var(--font-size-xs);color:var(--cream-dim)">
-          Rate limit data is parsed from Claude CLI output. Use the app to track token usage over time.
+          ${cliUsage ? 'Data sourced from Claude CLI usage tracking.' : 'Start using Claude to see limit data. Usage is tracked automatically.'}
         </div>
       `;
       break;
+    }
 
     case 'overview': {
       const totals = await window.api.usage.totals();

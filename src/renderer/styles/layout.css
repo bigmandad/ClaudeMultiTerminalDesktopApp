@@ -559,3 +559,72 @@
 .group-toggle.collapsed {
   transform: rotate(-90deg);
 }
+
+/* ── Plugin Section Headers ───────────────────────────── */
+
+.plugin-section-header {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px 4px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--cream-faint);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.plugin-item {
+  padding: 4px 8px;
+  transition: background var(--transition);
+}
+
+.plugin-item:hover {
+  background: var(--bg-hover);
+}
+
+.plugin-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+}
+
+.plugin-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.plugin-name {
+  color: var(--cream);
+  font-size: var(--font-size-sm);
+}
+
+.plugin-toggle-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--cream-faint);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all var(--transition);
+  margin-left: auto;
+}
+
+.plugin-toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--cream);
+}
+
+/* ── Explorer Project Select ──────────────────────────── */
+
+#explorer-project-select {
+  -webkit-app-region: no-drag;
+  max-width: 140px;
+}

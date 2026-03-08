@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const { registerIpcHandlers, cleanup } = require('./ipc-handlers');
 const { createMenu } = require('./menu');
@@ -26,6 +26,22 @@ function createWindow() {
       sandbox: false
     },
     icon: path.join(__dirname, '..', '..', 'assets', 'icon.png')
+  });
+
+  // Grant microphone permissions for speech-to-text
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'microphone') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'media' || permission === 'microphone') {
+      return true;
+    }
+    return false;
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));

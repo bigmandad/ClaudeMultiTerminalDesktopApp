@@ -206,6 +206,54 @@ async function init() {
     console.log('No previous sessions to restore');
   }
 
+  // ── App Memory State — persist conversation context ────
+
+  // Restore app memory
+  try {
+    const savedState = await window.api.appState.get('app_memory');
+    if (savedState) {
+      console.log('[AppMemory] Restored:', Object.keys(savedState));
+      state._appMemory = savedState;
+    }
+  } catch (e) {
+    console.log('[AppMemory] No previous memory');
+  }
+
+  // Save app state periodically (every 30s) and on session changes
+  async function saveAppMemory() {
+    const memory = {
+      lastActive: new Date().toISOString(),
+      sessionCount: state.sessions.size,
+      layout: state.layout,
+      focusedPane: state.focusedPaneIndex,
+      sessions: Array.from(state.sessions.values()).map(s => ({
+        id: s.id, name: s.name, workspacePath: s.workspacePath,
+        mode: s.mode, groupId: s.groupId, status: s.status,
+        lastMessage: s.lastMessage
+      })),
+      paneAssignments: state.paneAssignments,
+      groups: Array.from(state.groups.values()).map(g => ({
+        id: g.id, name: g.name, color: g.color
+      }))
+    };
+    try { await window.api.appState.set('app_memory', memory); } catch (e) { /* ignore */ }
+  }
+
+  setInterval(saveAppMemory, 30000);
+  events.on('session:added', () => setTimeout(saveAppMemory, 1000));
+  events.on('session:removed', () => setTimeout(saveAppMemory, 1000));
+  events.on('layout:changed', () => setTimeout(saveAppMemory, 500));
+
+  // Track last messages from PTY output per session
+  window.api.pty.onData((id, data) => {
+    const clean = data.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim();
+    if (clean.length > 5) {
+      const preview = clean.slice(0, 80).replace(/\n/g, ' ');
+      const session = state.getSession(id);
+      if (session) session.lastMessage = preview;
+    }
+  });
+
   console.log('Claude Sessions ready.');
 }
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; media-src 'self' blob:; connect-src 'self' http://localhost:*;">
   <title>Claude Sessions</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -57,6 +57,9 @@
         </div>
         <button class="rail-btn" id="stats-btn" title="Usage Statistics">
           <span class="rail-icon">&#9672;</span>
+        </button>
+        <button class="rail-btn" id="remote-api-btn" title="Toggle Remote API (Google Chat)">
+          <span class="rail-icon">&#127760;</span>
         </button>
         <button class="rail-btn" id="mute-btn" title="Toggle Sound">
           <span class="rail-icon">&#128276;</span>

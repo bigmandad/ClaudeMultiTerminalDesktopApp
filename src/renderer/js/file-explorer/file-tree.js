@@ -12,12 +12,75 @@ const EXT_ICONS = {
 };
 
 export function initFileExplorer() {
+  const selectEl = document.getElementById('explorer-project-select');
+
+  // Populate session dropdown
+  function refreshExplorerSelect() {
+    if (!selectEl) return;
+    const currentVal = selectEl.value;
+    selectEl.innerHTML = '<option value="">Select Session...</option>';
+
+    for (const [id, session] of state.sessions) {
+      if (session.workspacePath) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = session.name + ' — ' + shortenPath(session.workspacePath);
+        selectEl.appendChild(opt);
+      }
+    }
+
+    // Also add option to browse for a folder
+    const browseOpt = document.createElement('option');
+    browseOpt.value = '__browse__';
+    browseOpt.textContent = '+ Browse folder...';
+    selectEl.appendChild(browseOpt);
+
+    // Restore selection
+    if (currentVal && selectEl.querySelector(`option[value="${currentVal}"]`)) {
+      selectEl.value = currentVal;
+    }
+  }
+
+  // Handle dropdown change
+  if (selectEl) {
+    selectEl.addEventListener('change', async () => {
+      const val = selectEl.value;
+      if (val === '__browse__') {
+        const result = await window.api.fs.openFolder();
+        if (result && !result.canceled && result.path) {
+          loadTree(result.path);
+        }
+        selectEl.value = '';
+      } else if (val) {
+        const session = state.getSession(val);
+        if (session && session.workspacePath) {
+          loadTree(session.workspacePath);
+        }
+      }
+    });
+  }
+
+  // Refresh dropdown when sessions change
+  events.on('session:added', refreshExplorerSelect);
+  events.on('session:removed', refreshExplorerSelect);
+  events.on('session:updated', refreshExplorerSelect);
+
+  // Auto-load tree on session activation
   events.on('session:activated', (sessionId) => {
     const session = state.getSession(sessionId);
     if (session && session.workspacePath) {
       loadTree(session.workspacePath);
+      if (selectEl) selectEl.value = sessionId;
     }
   });
+
+  // Initial populate
+  setTimeout(refreshExplorerSelect, 500);
+}
+
+function shortenPath(p) {
+  const parts = p.replace(/\\/g, '/').split('/');
+  return parts.length > 2 ? '.../' + parts.slice(-2).join('/') : p;
 }
 
 export async function loadTree(rootPath) {

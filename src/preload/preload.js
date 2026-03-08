@@ -131,6 +131,13 @@ contextBridge.exposeInMainWorld('api', {
     mute: (muted) => ipcRenderer.invoke('notify:mute', muted)
   },
 
+  // ── Remote API ──────────────────────────────────────────
+  remote: {
+    start: (port) => ipcRenderer.invoke('remote:start', port),
+    stop: () => ipcRenderer.invoke('remote:stop'),
+    status: () => ipcRenderer.invoke('remote:status')
+  },
+
   // ── App State ────────────────────────────────────────────
   appState: {
     get: (key) => ipcRenderer.invoke('appState:get', key),

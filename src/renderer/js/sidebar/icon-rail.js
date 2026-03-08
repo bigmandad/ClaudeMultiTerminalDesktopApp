@@ -2,6 +2,7 @@
 
 import { state } from '../state.js';
 import { events } from '../events.js';
+import { toggleRemoteApi, isRemoteApiRunning } from '../settings/settings-modal.js';
 
 export function initIconRail() {
   const panelBtns = document.querySelectorAll('.rail-btn[data-panel]');
@@ -31,6 +32,23 @@ export function initIconRail() {
     statsBtn.addEventListener('click', () => {
       events.emit('stats:open');
     });
+  }
+
+  // Remote API toggle
+  const remoteBtn = document.getElementById('remote-api-btn');
+  if (remoteBtn) {
+    remoteBtn.addEventListener('click', async () => {
+      await toggleRemoteApi();
+      remoteBtn.classList.toggle('active', isRemoteApiRunning());
+    });
+
+    // Check initial state
+    setTimeout(async () => {
+      try {
+        const status = await window.api.remote.status();
+        remoteBtn.classList.toggle('active', status.running);
+      } catch (e) { /* ignore */ }
+    }, 2000);
   }
 }
 

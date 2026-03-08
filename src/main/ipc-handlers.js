@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+const remoteApi = require('./remote/remote-api');
 const transcriber = new Transcriber();
 const mcpManager = new McpManager();
 const notifier = new Notifier();
@@ -65,6 +66,8 @@ function registerIpcHandlers(ipcMain) {
         }
         // Write to transcript
         try { transcriber.write(opts.id, data); } catch(e) { /* ignore */ }
+        // Capture for remote API
+        try { remoteApi.captureOutput(opts.id, data); } catch(e) { /* ignore */ }
       };
 
       session.onExitCallback = (exitCode) => {
@@ -543,6 +546,21 @@ function registerIpcHandlers(ipcMain) {
     }
 
     return results;
+  });
+
+  // ── Remote API ──────────────────────────────────────────
+
+  ipcMain.handle('remote:start', (event, port) => {
+    return remoteApi.startServer(port || 3456);
+  });
+
+  ipcMain.handle('remote:stop', () => {
+    remoteApi.stopServer();
+    return { success: true };
+  });
+
+  ipcMain.handle('remote:status', () => {
+    return { running: remoteApi.isRunning() };
   });
 
   // ── App State ───────────────────────────────────────────
