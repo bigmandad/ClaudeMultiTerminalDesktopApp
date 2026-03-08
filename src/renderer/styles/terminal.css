@@ -1,0 +1,349 @@
+/* ── Terminal Pane ─────────────────────────────────────── */
+
+.terminal-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+  position: relative;
+}
+
+.terminal-pane.focused {
+  box-shadow: inset 0 0 0 1px var(--orange-dim);
+}
+
+/* ── Pane Header ───────────────────────────────────────── */
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-dim);
+  height: 30px;
+  flex-shrink: 0;
+}
+
+.pane-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pane-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cream-faint);
+  flex-shrink: 0;
+}
+
+.pane-status-dot.active {
+  background: var(--green);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.pane-status-dot.waiting {
+  background: var(--yellow);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.pane-name {
+  font-size: var(--font-size-sm);
+  color: var(--cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane-session-select {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 1px 6px;
+  cursor: pointer;
+  max-width: 160px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.pane-session-select:hover {
+  border-color: var(--orange-dim);
+}
+
+.pane-session-select:focus {
+  border-color: var(--orange);
+}
+
+.pane-mode-badge {
+  font-size: 8px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 2px;
+  letter-spacing: 0.3px;
+}
+
+.pane-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pane-mode-select {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  padding: 1px 4px;
+  cursor: pointer;
+}
+
+.skip-perms-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.skip-perms-check {
+  display: none;
+}
+
+.skip-perms-label {
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--cream-faint);
+  padding: 1px 4px;
+  border-radius: 2px;
+  border: 1px solid var(--border-dim);
+  transition: all var(--transition);
+}
+
+.skip-perms-check:checked + .skip-perms-label {
+  color: var(--red);
+  border-color: var(--red);
+  background: rgba(192, 112, 112, 0.15);
+  box-shadow: 0 0 6px rgba(192, 112, 112, 0.3);
+}
+
+.pane-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--cream-faint);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.pane-btn:hover {
+  background: var(--bg-hover);
+  color: var(--cream);
+}
+
+/* ── Pane Warning Banner ───────────────────────────────── */
+
+.pane-warning {
+  padding: 4px 12px;
+  background: rgba(192, 112, 112, 0.15);
+  border-bottom: 1px solid rgba(192, 112, 112, 0.3);
+  color: var(--red);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ── Group Banner ──────────────────────────────────────── */
+
+.pane-group-banner {
+  padding: 2px 12px;
+  font-size: var(--font-size-xs);
+  color: var(--cream-dim);
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+
+/* ── Context Bar ───────────────────────────────────────── */
+
+.pane-context-bar {
+  height: 3px;
+  background: var(--border-dim);
+  flex-shrink: 0;
+}
+
+.context-bar-fill {
+  height: 100%;
+  background: var(--blue);
+  transition: width 300ms ease, background-color 300ms ease;
+  border-radius: 0 2px 2px 0;
+}
+
+.context-bar-fill.warning { background: var(--yellow); }
+.context-bar-fill.critical { background: var(--red); }
+
+/* ── Terminal Container ────────────────────────────────── */
+
+.terminal-container {
+  flex: 1;
+  overflow: hidden;
+  padding: 4px;
+}
+
+.terminal-container .xterm {
+  height: 100%;
+}
+
+.terminal-container .xterm-viewport {
+  overflow-y: auto !important;
+}
+
+/* ── Input Bar ─────────────────────────────────────────── */
+
+.pane-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+
+.attachment-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.attachment-pill {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: var(--font-size-xs);
+  color: var(--cream-dim);
+}
+
+.attachment-pill-remove {
+  background: transparent;
+  border: none;
+  color: var(--cream-faint);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  line-height: 1;
+}
+
+.attachment-pill-remove:hover {
+  color: var(--red);
+}
+
+.pane-input {
+  flex: 1;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: var(--font-size);
+  padding: 4px 8px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.pane-input:focus {
+  border-color: var(--orange-dim);
+}
+
+.pane-input::placeholder {
+  color: var(--cream-faint);
+}
+
+.input-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--cream-faint);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.input-btn:hover {
+  background: var(--bg-hover);
+  color: var(--cream);
+}
+
+.send-btn:hover {
+  color: var(--orange);
+}
+
+.mic-btn.recording {
+  color: var(--orange);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* ── Add Pane Placeholder ──────────────────────────────── */
+
+.add-pane-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.add-pane-placeholder:hover {
+  background: var(--bg-hover);
+}
+
+.add-pane-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--cream-faint);
+}
+
+.add-pane-icon {
+  font-size: 32px;
+  color: var(--border);
+}
+
+.add-pane-text {
+  font-size: var(--font-size-sm);
+}
+
+/* ── Diff Badge ────────────────────────────────────────── */
+
+.diff-stats-badge {
+  font-size: var(--font-size-xs);
+  color: var(--green);
+  cursor: pointer;
+}
+
+.diff-stats-badge .additions { color: var(--green); }
+.diff-stats-badge .deletions { color: var(--red); }

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self';">
+  <title>Claude Sessions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/layout.css">
+  <link rel="stylesheet" href="styles/terminal.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/file-explorer.css">
+  <link rel="stylesheet" href="styles/forms.css">
+  <link rel="stylesheet" href="../../dist/xterm.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Icon Rail (44px) -->
+    <div id="icon-rail">
+      <div class="rail-top">
+        <button class="rail-btn active" data-panel="sessions" title="Sessions">
+          <span class="rail-icon">&#9776;</span>
+        </button>
+        <button class="rail-btn" data-panel="explorer" title="File Explorer">
+          <span class="rail-icon">&#9707;</span>
+        </button>
+        <button class="rail-btn" data-panel="plugins" title="Plugins & MCP">
+          <span class="rail-icon">&#10033;</span>
+        </button>
+        <div class="rail-divider"></div>
+        <button class="rail-btn layout-btn active" data-layout="single" title="Single Pane">
+          <span class="rail-icon">&#9635;</span>
+        </button>
+        <button class="rail-btn layout-btn" data-layout="split" title="Split Panes">
+          <span class="rail-icon">&#9707;</span>
+        </button>
+        <button class="rail-btn layout-btn" data-layout="triple" title="Triple Panes">
+          <span class="rail-icon">&#8863;</span>
+        </button>
+        <button class="rail-btn layout-btn" data-layout="quad" title="Quad Panes">
+          <span class="rail-icon">&#8862;</span>
+        </button>
+      </div>
+      <div class="rail-bottom">
+        <div class="mini-limit-bars">
+          <div class="mini-bar" id="hr-bar" title="Hourly limit">
+            <span class="mini-label">HR</span>
+            <div class="mini-track"><div class="mini-fill" style="width:0%"></div></div>
+          </div>
+          <div class="mini-bar" id="wk-bar" title="Weekly limit">
+            <span class="mini-label">WK</span>
+            <div class="mini-track"><div class="mini-fill" style="width:0%"></div></div>
+          </div>
+        </div>
+        <button class="rail-btn" id="stats-btn" title="Usage Statistics">
+          <span class="rail-icon">&#9672;</span>
+        </button>
+        <button class="rail-btn" id="mute-btn" title="Toggle Sound">
+          <span class="rail-icon">&#128276;</span>
+        </button>
+        <div class="auth-status-row">
+          <div class="auth-dot" id="auth-status-dot" title="Checking Claude CLI..."></div>
+          <span class="auth-label" id="auth-status-label">Checking...</span>
+        </div>
+        <div class="mcp-status-dot" id="mcp-global-dot" title="MCP Status"></div>
+      </div>
+    </div>
+
+    <!-- Left Panel (220px) -->
+    <div id="left-panel">
+      <!-- Sessions Panel -->
+      <div class="panel-content" id="sessions-panel">
+        <div class="panel-header">
+          <span>SESSIONS</span>
+          <button class="panel-btn" id="new-session-btn" title="New Session">+</button>
+        </div>
+        <div class="panel-section" id="groups-section">
+          <div class="section-header">
+            <span>Groups</span>
+            <button class="section-btn" id="new-group-btn">+ New Group</button>
+          </div>
+          <div id="groups-list"></div>
+        </div>
+        <div id="sessions-list"></div>
+      </div>
+
+      <!-- File Explorer Panel -->
+      <div class="panel-content hidden" id="explorer-panel">
+        <div class="panel-header">
+          <span>FILE EXPLORER</span>
+          <select id="explorer-project-select" class="panel-select"></select>
+        </div>
+        <div id="file-tree"></div>
+        <div class="panel-footer" id="explorer-footer"></div>
+      </div>
+
+      <!-- Plugins Panel -->
+      <div class="panel-content hidden" id="plugins-panel">
+        <div class="panel-header">
+          <span>PLUGINS & MCP</span>
+          <button class="panel-btn" id="add-plugin-btn" title="Add Plugin">+</button>
+        </div>
+        <div id="plugins-list"></div>
+        <div class="panel-footer">run /mcp in session to verify</div>
+      </div>
+    </div>
+
+    <!-- Main Area -->
+    <div id="main-area">
+      <!-- Auth Banner -->
+      <div id="auth-banner" class="auth-banner hidden"></div>
+
+      <!-- Tab Bar -->
+      <div id="tab-bar">
+        <div id="tabs-container"></div>
+        <div id="tab-bar-actions">
+          <button class="tab-action-btn quick-launch-btn" id="quick-launch-btn" title="Quick Launch Claude (one-click)">
+            <span>&#9889;</span> Start Claude
+          </button>
+          <button class="tab-action-btn" id="broadcast-btn" title="Broadcast">
+            <span>&#128225;</span> Broadcast
+          </button>
+          <button class="tab-action-btn" id="tab-new-btn" title="New Session">+</button>
+        </div>
+      </div>
+
+      <!-- Terminal Grid -->
+      <div id="terminal-grid" class="layout-single">
+        <div class="terminal-pane" id="pane-0">
+          <div class="pane-header">
+            <div class="pane-info">
+              <span class="pane-status-dot"></span>
+              <select class="pane-session-select" title="Choose session for this pane">
+                <option value="">No Session</option>
+              </select>
+              <span class="pane-mode-badge"></span>
+            </div>
+            <div class="pane-controls">
+              <select class="pane-mode-select">
+                <option value="ask">ASK</option>
+                <option value="auto">AUTO</option>
+                <option value="plan">PLAN</option>
+                <option value="bypass">BYPASS</option>
+              </select>
+              <label class="skip-perms-toggle" title="Skip Permissions">
+                <input type="checkbox" class="skip-perms-check">
+                <span class="skip-perms-label">SKIP PERMS</span>
+              </label>
+              <button class="pane-btn relay-btn" title="Relay to group">&#8594;</button>
+              <button class="pane-btn journal-btn" title="Journal">&#128203;</button>
+              <button class="pane-btn diff-btn" title="Diff stats"></button>
+            </div>
+          </div>
+          <div class="pane-warning hidden">&#9888; Dangerously skip permissions is ON</div>
+          <div class="pane-group-banner hidden"></div>
+          <div class="pane-context-bar hidden">
+            <div class="context-bar-fill"></div>
+          </div>
+          <div class="terminal-container"></div>
+          <div class="pane-input-bar">
+            <button class="input-btn attach-btn" title="Add Reference">+</button>
+            <div class="attachment-pills"></div>
+            <input type="text" class="pane-input" placeholder="Type a message...">
+            <button class="input-btn plugin-btn" title="Plugins">&#10033;</button>
+            <button class="input-btn mic-btn" title="Speech to Text">&#127908;</button>
+            <button class="input-btn send-btn" title="Send (Ctrl+Enter)">&#10148;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- New Session Modal -->
+    <div class="modal-overlay hidden" id="new-session-modal">
+      <div class="modal">
+        <div class="modal-header">
+          <span>New Session</span>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Session Name</label>
+            <input type="text" id="session-name-input" placeholder="e.g. my-project">
+          </div>
+          <div class="form-group">
+            <label>Workspace Path</label>
+            <div class="input-with-btn">
+              <input type="text" id="session-path-input" placeholder="C:\Projects\my-project">
+              <button id="browse-path-btn">Browse</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Initial Mode</label>
+            <select id="session-mode-select">
+              <option value="ask">Ask Permissions</option>
+              <option value="auto">Auto Accept Edits</option>
+              <option value="plan">Plan Mode</option>
+              <option value="bypass">Bypass Permissions</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="session-skip-perms">
+              <span>Skip Permissions</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label>Session Group</label>
+            <select id="session-group-select">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Git Options</label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="session-git-worktree">
+              <span>Use Git Worktree</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="session-github-repo">
+              <span>Create GitHub Repository</span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary modal-cancel">Cancel</button>
+          <button class="btn btn-primary" id="launch-session-btn">LAUNCH</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Broadcast Overlay -->
+    <div class="broadcast-overlay hidden" id="broadcast-overlay">
+      <div class="broadcast-panel">
+        <div class="broadcast-header">
+          <span>Broadcast Message</span>
+          <button class="broadcast-close">&times;</button>
+        </div>
+        <div class="broadcast-body">
+          <select class="broadcast-scope" id="broadcast-scope">
+            <option value="all">All Sessions</option>
+            <option value="group">Active Group Only</option>
+            <option value="manual">Manual Select</option>
+          </select>
+          <div id="broadcast-targets"></div>
+          <textarea id="broadcast-input" placeholder="Type broadcast message..." rows="3"></textarea>
+        </div>
+        <div class="broadcast-footer">
+          <button class="btn btn-primary" id="broadcast-send-btn">BROADCAST</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+  </div>
+
+  <script src="../../dist/renderer.js"></script>
+</body>
+</html>

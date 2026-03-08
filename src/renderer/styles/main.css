@@ -1,0 +1,87 @@
+/* ── Claude Sessions — Main Styles ─────────────────────── */
+
+:root {
+  --bg:          #1a1714;
+  --bg-panel:    #201d1a;
+  --bg-deep:     #161310;
+  --bg-hover:    #2a2520;
+  --bg-active:   #2e2820;
+  --border:      #3a3330;
+  --border-dim:  #2a2520;
+  --orange:      #d4845a;
+  --orange-dim:  #8a5238;
+  --cream:       #e8ddd0;
+  --cream-dim:   #a09080;
+  --cream-faint: #6a5f55;
+  --green:       #7ab87a;
+  --yellow:      #c8a96a;
+  --red:         #c07070;
+  --blue:        #7aa0c8;
+  --purple:      #a07ab8;
+
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  --font-size: 13px;
+  --font-size-sm: 11px;
+  --font-size-xs: 10px;
+
+  --radius: 6px;
+  --radius-sm: 4px;
+  --transition: 150ms ease;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--font-size);
+  color: var(--cream);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cream-faint);
+}
+
+/* ── Selection ─────────────────────────────────────────── */
+
+::selection {
+  background: rgba(212, 132, 90, 0.3);
+  color: var(--cream);
+}
+
+/* ── Focus ─────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 1px solid var(--orange);
+  outline-offset: -1px;
+}
+
+/* ── Hidden ────────────────────────────────────────────── */
+
+.hidden {
+  display: none !important;
+}

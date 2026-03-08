@@ -1,0 +1,73 @@
+/* ── Session Form Specific ─────────────────────────────── */
+
+#session-name-input,
+#session-path-input {
+  font-size: var(--font-size);
+}
+
+#session-mode-select,
+#session-group-select {
+  font-size: var(--font-size);
+}
+
+/* ── GitHub Repo Form ──────────────────────────────────── */
+
+.github-options {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+}
+
+.github-options.hidden {
+  display: none;
+}
+
+.github-options .form-group {
+  margin-bottom: 8px;
+}
+
+.github-options label {
+  font-size: var(--font-size-xs);
+}
+
+/* ── Settings Form ─────────────────────────────────────── */
+
+.settings-section {
+  margin-bottom: 20px;
+}
+
+.settings-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--cream);
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+/* ── Color Picker ──────────────────────────────────────── */
+
+.color-picker-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.color-swatch-option {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.color-swatch-option:hover {
+  transform: scale(1.2);
+}
+
+.color-swatch-option.selected {
+  border-color: var(--cream);
+}

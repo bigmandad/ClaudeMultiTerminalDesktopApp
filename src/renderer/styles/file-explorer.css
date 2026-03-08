@@ -1,0 +1,75 @@
+/* ── File Explorer ─────────────────────────────────────── */
+
+#file-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background var(--transition);
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+}
+
+.tree-item:hover {
+  background: var(--bg-hover);
+}
+
+.tree-item.selected {
+  background: var(--bg-active);
+}
+
+.tree-indent {
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.tree-toggle {
+  width: 14px;
+  text-align: center;
+  color: var(--cream-faint);
+  font-size: 10px;
+  flex-shrink: 0;
+  transition: transform var(--transition);
+}
+
+.tree-toggle.expanded {
+  transform: rotate(90deg);
+}
+
+.tree-icon {
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* File type colors */
+.tree-icon.folder { color: var(--orange); }
+.tree-icon.md { color: var(--yellow); }
+.tree-icon.json { color: var(--orange); }
+.tree-icon.jsx, .tree-icon.tsx { color: var(--blue); }
+.tree-icon.js, .tree-icon.ts { color: #c8a96a; }
+.tree-icon.css { color: var(--purple); }
+.tree-icon.html { color: var(--red); }
+.tree-icon.png, .tree-icon.jpg, .tree-icon.gif, .tree-icon.svg { color: var(--green); }
+.tree-icon.java { color: var(--red); }
+.tree-icon.py { color: var(--blue); }
+.tree-icon.rs { color: var(--orange); }
+
+.tree-name {
+  color: var(--cream);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-item.directory > .tree-name {
+  color: var(--cream);
+  font-weight: 500;
+}

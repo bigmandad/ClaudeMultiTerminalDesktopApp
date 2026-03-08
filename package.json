@@ -1,0 +1,58 @@
+{
+  "name": "claude-sessions",
+  "version": "0.1.0",
+  "description": "Multi-pane terminal manager for Claude CLI sessions",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "node build.js && electron .",
+    "bundle": "node build.js",
+    "postinstall": "node build.js",
+    "build": "node build.js && electron-builder --win",
+    "dev": "node build.js && electron . --dev"
+  },
+  "dependencies": {
+    "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-serialize": "^0.13.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/xterm": "^5.5.0",
+    "better-sqlite3": "^11.9.1",
+    "uuid": "^11.0.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
+    "electron": "^29.4.6",
+    "electron-builder": "^26.8.1",
+    "esbuild": "^0.25.0"
+  },
+  "author": "Claude Sessions",
+  "build": {
+    "appId": "com.claudesessions.app",
+    "productName": "Claude Sessions",
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "dir"
+      ],
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "files": [
+      "src/**/*",
+      "dist/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*",
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/sounds",
+        "to": "sounds"
+      }
+    ]
+  }
+}

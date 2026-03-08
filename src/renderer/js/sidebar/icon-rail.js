@@ -1,0 +1,54 @@
+// ── Icon Rail — Panel switching ────────────────────────────
+
+import { state } from '../state.js';
+import { events } from '../events.js';
+
+export function initIconRail() {
+  const panelBtns = document.querySelectorAll('.rail-btn[data-panel]');
+
+  panelBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const panel = btn.dataset.panel;
+      state.setLeftPanel(panel);
+      updatePanelButtons(panel);
+      updatePanelVisibility(panel);
+    });
+  });
+
+  // Mute toggle
+  const muteBtn = document.getElementById('mute-btn');
+  if (muteBtn) {
+    muteBtn.addEventListener('click', () => {
+      state.muted = !state.muted;
+      muteBtn.querySelector('.rail-icon').innerHTML = state.muted ? '&#128277;' : '&#128276;';
+      events.emit('mute:changed', state.muted);
+    });
+  }
+
+  // Stats button
+  const statsBtn = document.getElementById('stats-btn');
+  if (statsBtn) {
+    statsBtn.addEventListener('click', () => {
+      events.emit('stats:open');
+    });
+  }
+}
+
+function updatePanelButtons(activePanel) {
+  document.querySelectorAll('.rail-btn[data-panel]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.panel === activePanel);
+  });
+}
+
+function updatePanelVisibility(activePanel) {
+  const panels = {
+    sessions: 'sessions-panel',
+    explorer: 'explorer-panel',
+    plugins: 'plugins-panel'
+  };
+
+  for (const [key, id] of Object.entries(panels)) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', key !== activePanel);
+  }
+}
