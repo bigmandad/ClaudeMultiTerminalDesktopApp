@@ -347,3 +347,51 @@
 
 .diff-stats-badge .additions { color: var(--green); }
 .diff-stats-badge .deletions { color: var(--red); }
+
+/* ── Drag & Drop ──────────────────────────────────────── */
+
+.terminal-pane.drag-over {
+  outline: 2px dashed var(--orange);
+  outline-offset: -2px;
+}
+
+.terminal-pane.drag-over .terminal-container::after {
+  content: 'Drop files to attach';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 23, 20, 0.85);
+  color: var(--orange);
+  font-size: 16px;
+  font-weight: 600;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.terminal-pane.drag-over .terminal-container {
+  position: relative;
+}
+
+.attachment-pill-icon {
+  font-size: 10px;
+}
+
+/* ── Sparkline Bars ───────────────────────────────────── */
+
+.spark-bar {
+  flex: 1;
+  background: var(--orange);
+  border-radius: 2px 2px 0 0;
+  min-width: 8px;
+  transition: height 300ms ease;
+  cursor: default;
+}
+
+.spark-bar:hover {
+  background: var(--cream);
+}

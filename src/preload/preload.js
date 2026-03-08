@@ -34,7 +34,10 @@ contextBridge.exposeInMainWorld('api', {
   group: {
     create: (group) => ipcRenderer.invoke('group:create', group),
     list: () => ipcRenderer.invoke('group:list'),
-    delete: (id) => ipcRenderer.invoke('group:delete', id)
+    delete: (id) => ipcRenderer.invoke('group:delete', id),
+    createSharedFolder: (opts) => ipcRenderer.invoke('group:createSharedFolder', opts),
+    appendCorrespondence: (opts) => ipcRenderer.invoke('group:appendCorrespondence', opts),
+    readCorrespondence: (folderPath) => ipcRenderer.invoke('group:readCorrespondence', folderPath)
   },
 
   // ── Usage Stats ──────────────────────────────────────────
@@ -46,9 +49,11 @@ contextBridge.exposeInMainWorld('api', {
     readCliUsage: () => ipcRenderer.invoke('usage:readCliUsage')
   },
 
-  // ── Plugins Detection ──────────────────────────────────
+  // ── Plugins Detection & Management ──────────────────────
   plugins: {
-    detect: () => ipcRenderer.invoke('plugins:detect')
+    detect: () => ipcRenderer.invoke('plugins:detect'),
+    toggle: (pluginId, enabled) => ipcRenderer.invoke('plugins:toggle', pluginId, enabled),
+    upload: (opts) => ipcRenderer.invoke('plugins:upload', opts)
   },
 
   // ── File System ──────────────────────────────────────────

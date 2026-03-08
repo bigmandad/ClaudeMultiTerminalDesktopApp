@@ -1,74 +1,119 @@
-// ── MCP UI — sidebar MCP server management panel ────────
+// ── MCP UI — sidebar plugins & MCP server panel ────────
 
 import { state } from '../state.js';
 import { events } from '../events.js';
 import { showToast } from '../notifications/toast.js';
 
+let detectedPlugins = [];
+let pluginData = null;
+
 export function initMcpUI() {
   renderPluginsList();
 
-  // Listen for MCP status updates
-  const cleanup = window.api.mcp.onServerStatus((status) => {
+  window.api.mcp.onServerStatus((status) => {
     updateMcpDot(status);
     renderPluginsList();
   });
 
-  // Add plugin button
   const addBtn = document.getElementById('add-plugin-btn');
   if (addBtn) {
-    addBtn.addEventListener('click', showAddPluginFlow);
+    addBtn.addEventListener('click', showUploadDialog);
   }
 
-  // Initial status check
   loadInitialStatus();
-
-  // Also detect plugins on init
   detectPlugins();
+
+  events.on('session:added', () => renderPluginsList());
+  events.on('session:removed', () => renderPluginsList());
 }
 
 async function loadInitialStatus() {
   try {
     const status = await window.api.mcp.status();
     updateMcpDot(status);
-  } catch (e) {
-    // No servers running yet
-  }
+  } catch (e) { /* no servers */ }
 }
 
 function updateMcpDot(status) {
   const dot = document.getElementById('mcp-global-dot');
   if (!dot) return;
-
-  let allConnected = true;
-  let anyRunning = false;
+  let allConnected = true, anyRunning = false;
   const statusObj = typeof status === 'object' ? status : {};
-
-  for (const [name, info] of Object.entries(statusObj)) {
+  for (const info of Object.values(statusObj)) {
     anyRunning = true;
     if (info.status !== 'connected') allConnected = false;
   }
-
-  if (!anyRunning) {
-    dot.style.background = 'var(--charcoal-light)';
-    dot.title = 'No MCP servers';
-  } else if (allConnected) {
-    dot.style.background = 'var(--green)';
-    dot.title = 'All MCP servers connected';
-  } else {
-    dot.style.background = 'var(--yellow)';
-    dot.title = 'Some MCP servers not connected';
-  }
+  dot.style.background = !anyRunning ? 'var(--charcoal-light)' :
+                          allConnected ? 'var(--green)' : 'var(--yellow)';
+  dot.title = !anyRunning ? 'No MCP servers' :
+              allConnected ? 'All MCP servers connected' : 'Some MCP servers not connected';
 }
-
-let detectedPlugins = [];
 
 async function detectPlugins() {
   try {
-    const result = await window.api.plugins.detect();
-    detectedPlugins = result?.plugins || [];
+    pluginData = await window.api.plugins.detect();
+    detectedPlugins = pluginData?.plugins || [];
     renderPluginsList();
   } catch (e) {
     console.log('[MCP-UI] plugin detection error:', e.message);
+  }
+}
+
+async function togglePlugin(pluginId, currentlyEnabled) {
+  const newState = !currentlyEnabled;
+  try {
+    const result = await window.api.plugins.toggle(pluginId, newState);
+    if (result.success) {
+      showToast({
+        title: `${pluginId.split('@')[0]} ${newState ? 'enabled' : 'disabled'}`,
+        message: newState ? 'Plugin will be active in new sessions.' : 'Plugin will be inactive in new sessions.',
+        icon: newState ? '&#9989;' : '&#10060;'
+      });
+      // Refresh detection
+      await detectPlugins();
+    } else {
+      showToast({ title: 'Error: ' + result.error, icon: '&#9888;' });
+    }
+  } catch (e) {
+    showToast({ title: 'Error: ' + e.message, icon: '&#9888;' });
+  }
+}
+
+async function showUploadDialog() {
+  try {
+    const result = await window.api.fs.openFile({
+      filters: [
+        { name: 'Plugin Files', extensions: ['js', 'md', 'zip'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (result.canceled || !result.paths || result.paths.length === 0) return;
+
+    const uploadResult = await window.api.plugins.upload({ filePaths: result.paths });
+    if (uploadResult.success) {
+      const uploaded = uploadResult.results.filter(r => !r.error);
+      const errors = uploadResult.results.filter(r => r.error);
+
+      if (uploaded.length > 0) {
+        showToast({
+          title: `Uploaded ${uploaded.length} plugin(s)`,
+          message: uploaded.map(r => r.name).join(', '),
+          icon: '&#10033;'
+        });
+      }
+      if (errors.length > 0) {
+        showToast({
+          title: `${errors.length} upload error(s)`,
+          message: errors.map(r => `${r.name}: ${r.error}`).join('; '),
+          icon: '&#9888;'
+        });
+      }
+      // Refresh
+      await detectPlugins();
+    }
+  } catch (e) {
+    showToast({ title: 'Upload failed: ' + e.message, icon: '&#9888;' });
   }
 }
 
@@ -80,19 +125,83 @@ async function renderPluginsList() {
     const config = await window.api.mcp.getConfig();
     const status = await window.api.mcp.status();
     const servers = config?.mcpServers || config || {};
+    const serverNames = Object.keys(servers);
 
     container.innerHTML = '';
 
-    const names = Object.keys(servers);
+    // ── Section: Installed Plugins ────────────────────────
+    const installedPlugins = detectedPlugins.filter(p => p.id && !p.id.startsWith('command:'));
+    if (installedPlugins.length > 0) {
+      const header = document.createElement('div');
+      header.className = 'plugin-section-header';
+      header.innerHTML = `<span>Installed Plugins (${installedPlugins.length})</span>`;
+      container.appendChild(header);
 
-    // Section: MCP Servers
-    if (names.length > 0) {
-      const sectionHeader = document.createElement('div');
-      sectionHeader.className = 'plugin-section-header';
-      sectionHeader.innerHTML = '<span>MCP Servers</span>';
-      container.appendChild(sectionHeader);
+      for (const plugin of installedPlugins) {
+        const item = document.createElement('div');
+        item.className = 'plugin-item' + (plugin.enabled ? ' enabled' : '');
+        const sourceLabel = plugin.source === 'claude-plugins-official' ? 'Official' :
+                            plugin.source === 'local-desktop-app-uploads' ? 'Local' : plugin.source;
 
-      for (const name of names) {
+        item.innerHTML = `
+          <div class="plugin-item-header">
+            <span class="plugin-dot" style="background:${plugin.enabled ? 'var(--green)' : 'var(--cream-faint)'}"></span>
+            <span class="plugin-name" style="flex:1">${escapeHtml(plugin.name)}</span>
+            <button class="plugin-on-off-btn ${plugin.enabled ? 'is-on' : 'is-off'}" data-plugin-id="${escapeHtml(plugin.id)}" data-enabled="${plugin.enabled ? 'true' : 'false'}" title="${plugin.enabled ? 'Click to disable' : 'Click to enable'}">
+              ${plugin.enabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
+          <div class="plugin-meta">
+            <span class="plugin-source">${escapeHtml(sourceLabel)}</span>
+            ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
+          </div>
+          ${plugin.description ? `<div class="plugin-desc">${escapeHtml(plugin.description)}</div>` : ''}
+        `;
+        container.appendChild(item);
+      }
+
+      // Wire toggle buttons
+      container.querySelectorAll('.plugin-on-off-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const pluginId = btn.dataset.pluginId;
+          const isEnabled = btn.dataset.enabled === 'true';
+          togglePlugin(pluginId, isEnabled);
+        });
+      });
+    }
+
+    // ── Section: Custom Commands ──────────────────────────
+    const commands = detectedPlugins.filter(p => p.id && p.id.startsWith('command:'));
+    if (commands.length > 0) {
+      const header = document.createElement('div');
+      header.className = 'plugin-section-header';
+      header.style.marginTop = installedPlugins.length > 0 ? '12px' : '0';
+      header.innerHTML = `<span>Custom Commands (${commands.length})</span>`;
+      container.appendChild(header);
+
+      for (const cmd of commands) {
+        const item = document.createElement('div');
+        item.className = 'plugin-item';
+        item.innerHTML = `
+          <div class="plugin-item-header">
+            <span class="plugin-type-tag cmd-tag">CMD</span>
+            <span class="plugin-name" style="flex:1">${escapeHtml(cmd.name)}</span>
+          </div>
+        `;
+        container.appendChild(item);
+      }
+    }
+
+    // ── Section: MCP Servers ─────────────────────────────
+    if (serverNames.length > 0) {
+      const header = document.createElement('div');
+      header.className = 'plugin-section-header';
+      header.style.marginTop = (installedPlugins.length > 0 || commands.length > 0) ? '12px' : '0';
+      header.innerHTML = `<span>MCP Servers (${serverNames.length})</span>`;
+      container.appendChild(header);
+
+      for (const name of serverNames) {
         const serverStatus = status[name] || {};
         const isConnected = serverStatus.status === 'connected';
         const dotColor = isConnected ? 'var(--green)' :
@@ -103,7 +212,7 @@ async function renderPluginsList() {
         item.innerHTML = `
           <div class="plugin-item-header">
             <span class="plugin-dot" style="background:${dotColor}"></span>
-            <span class="plugin-name">${escapeHtml(name)}</span>
+            <span class="plugin-name" style="flex:1">${escapeHtml(name)}</span>
             <button class="plugin-toggle-btn" data-server="${escapeHtml(name)}" title="${isConnected ? 'Stop' : 'Start'}">
               ${isConnected ? '&#9632;' : '&#9654;'}
             </button>
@@ -112,9 +221,9 @@ async function renderPluginsList() {
         container.appendChild(item);
       }
 
-      // Toggle buttons
       container.querySelectorAll('.plugin-toggle-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
           const serverName = btn.dataset.server;
           try {
             const st = await window.api.mcp.status();
@@ -137,53 +246,21 @@ async function renderPluginsList() {
       });
     }
 
-    // Section: Detected Plugins / Commands
-    if (detectedPlugins.length > 0) {
-      const sectionHeader = document.createElement('div');
-      sectionHeader.className = 'plugin-section-header';
-      sectionHeader.style.marginTop = names.length > 0 ? '12px' : '0';
-      sectionHeader.innerHTML = '<span>Detected Plugins</span>';
-      container.appendChild(sectionHeader);
-
-      for (const plugin of detectedPlugins) {
-        const typeBadge = plugin.type === 'command' ? 'CMD' :
-                          plugin.type === 'script' ? 'JS' : 'PLG';
-        const typeColor = plugin.type === 'command' ? 'var(--blue)' :
-                          plugin.type === 'script' ? 'var(--yellow)' : 'var(--orange)';
-
-        const item = document.createElement('div');
-        item.className = 'plugin-item';
-        item.innerHTML = `
-          <div class="plugin-item-header">
-            <span class="plugin-type-tag" style="color:${typeColor};font-size:8px;font-weight:700;margin-right:4px">${typeBadge}</span>
-            <span class="plugin-name" style="flex:1">${escapeHtml(plugin.name)}</span>
-          </div>
-          ${plugin.description ? `<div class="plugin-desc" style="font-size:var(--font-size-xs);color:var(--cream-faint);padding:0 6px 4px 22px">${escapeHtml(plugin.description)}</div>` : ''}
-        `;
-        container.appendChild(item);
-      }
-    }
-
-    // Empty state
-    if (names.length === 0 && detectedPlugins.length === 0) {
+    // ── Empty state ──────────────────────────────────────
+    if (serverNames.length === 0 && detectedPlugins.length === 0) {
       container.innerHTML = `
-        <div style="padding:12px;color:var(--cream-faint);font-size:var(--font-size-sm);text-align:center">
-          No MCP servers or plugins detected.<br>
-          Add servers to <code style="background:var(--bg-deep);padding:1px 4px;border-radius:3px">~/.claude.json</code>
+        <div style="padding:16px;color:var(--cream-faint);font-size:var(--font-size-sm);text-align:center">
+          No plugins or MCP servers detected.<br><br>
+          <span style="font-size:var(--font-size-xs)">
+            Click <strong>+</strong> above to upload a plugin, or<br>
+            run <code style="background:var(--bg-deep);padding:1px 4px;border-radius:3px">claude plugin add</code> in a session
+          </span>
         </div>
       `;
     }
   } catch (e) {
     container.innerHTML = `<div style="padding:12px;color:var(--red);font-size:var(--font-size-sm)">${e.message}</div>`;
   }
-}
-
-async function showAddPluginFlow() {
-  showToast({
-    title: 'Add MCP Server',
-    message: 'Edit ~/.claude.json to add MCP server configurations.',
-    icon: '&#10033;'
-  });
 }
 
 function escapeHtml(str) {

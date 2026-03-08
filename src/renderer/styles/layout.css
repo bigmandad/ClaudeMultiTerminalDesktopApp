@@ -522,7 +522,302 @@
   grid-template-rows: 1fr 1fr;
 }
 
-/* ── Group Headers ─────────────────────────────────────── */
+/* ── Group Blocks ──────────────────────────────────────── */
+
+.group-block {
+  margin: 2px 4px;
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  overflow: visible;
+  position: relative;
+  transition: border-color var(--transition);
+}
+
+.group-block:hover {
+  border-color: var(--border);
+}
+
+.group-block.group-drag-over {
+  border-color: var(--orange);
+  background: rgba(212, 132, 90, 0.08);
+}
+
+.group-block-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.group-block-header:hover {
+  background: var(--bg-hover);
+}
+
+.group-block-header.collapsed + .group-members {
+  display: none;
+}
+
+.group-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.group-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--cream);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.group-block-header:hover .group-actions {
+  opacity: 1;
+}
+
+.group-action-btn {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--cream-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.group-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--cream);
+  border-color: var(--border);
+}
+
+.group-delete-btn:hover {
+  color: var(--red) !important;
+  border-color: var(--red) !important;
+}
+
+.group-add-member-btn:hover {
+  color: var(--green) !important;
+  border-color: var(--green) !important;
+}
+
+/* ── Group Members ────────────────────────────────────── */
+
+.group-members {
+  border-top: 1px solid var(--border-dim);
+}
+
+.group-members.collapsed {
+  display: none;
+}
+
+.group-member-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 20px;
+  cursor: pointer;
+  transition: background var(--transition);
+  font-size: var(--font-size-sm);
+}
+
+.group-member-item:hover {
+  background: var(--bg-hover);
+}
+
+.group-member-name {
+  flex: 1;
+  color: var(--cream-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-remove-member-btn {
+  opacity: 0;
+  background: transparent;
+  border: none;
+  color: var(--cream-faint);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  transition: all var(--transition);
+}
+
+.group-member-item:hover .group-remove-member-btn {
+  opacity: 1;
+}
+
+.group-remove-member-btn:hover {
+  color: var(--red);
+}
+
+.group-empty-members {
+  padding: 6px 12px;
+  font-size: var(--font-size-xs);
+  color: var(--cream-faint);
+  font-style: italic;
+}
+
+.groups-empty {
+  padding: 8px 12px;
+  font-size: var(--font-size-xs);
+  color: var(--cream-faint);
+  text-align: center;
+}
+
+/* ── Group Create Form ────────────────────────────────── */
+
+.group-create-form {
+  margin: 4px;
+  padding: 8px;
+  border: 1px solid var(--orange-dim);
+  border-radius: var(--radius-sm);
+  background: var(--bg-deep);
+}
+
+.group-create-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.group-color-picker {
+  display: flex;
+  gap: 4px;
+}
+
+.group-color-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all var(--transition);
+}
+
+.group-color-swatch:hover {
+  transform: scale(1.2);
+}
+
+.group-color-swatch.selected {
+  border-color: var(--cream);
+  box-shadow: 0 0 6px rgba(232, 221, 208, 0.4);
+}
+
+.group-name-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 4px 8px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.group-name-input:focus {
+  border-color: var(--orange-dim);
+}
+
+.group-create-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  justify-content: flex-end;
+}
+
+.group-create-ok,
+.group-create-cancel {
+  padding: 2px 10px;
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: all var(--transition);
+}
+
+.group-create-ok {
+  background: rgba(212, 132, 90, 0.2);
+  color: var(--orange);
+  border-color: var(--orange-dim);
+}
+
+.group-create-ok:hover {
+  background: rgba(212, 132, 90, 0.35);
+}
+
+.group-create-cancel {
+  background: transparent;
+  color: var(--cream-dim);
+}
+
+.group-create-cancel:hover {
+  background: var(--bg-hover);
+  color: var(--cream);
+}
+
+/* ── Group Add Member Menu ────────────────────────────── */
+
+.group-add-menu {
+  position: absolute;
+  right: 4px;
+  top: 100%;
+  z-index: 100;
+  min-width: 160px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.group-add-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--cream);
+  transition: background var(--transition);
+}
+
+.group-add-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.group-add-menu-tag {
+  font-size: 8px;
+  color: var(--cream-faint);
+  padding: 1px 4px;
+  border: 1px solid var(--border-dim);
+  border-radius: 3px;
+  margin-left: auto;
+}
+
+/* ── Legacy Group Header (compat) ─────────────────────── */
 
 .group-header {
   display: flex;
@@ -535,19 +830,6 @@
 
 .group-header:hover {
   background: var(--bg-hover);
-}
-
-.group-color {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.group-name {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: var(--cream);
-  flex: 1;
 }
 
 .group-toggle {
@@ -565,21 +847,30 @@
 .plugin-section-header {
   display: flex;
   align-items: center;
-  padding: 6px 12px 4px;
+  padding: 8px 12px 4px;
   font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--cream-faint);
   letter-spacing: 0.3px;
   text-transform: uppercase;
+  border-bottom: 1px solid var(--border-dim);
+  margin-bottom: 2px;
 }
 
 .plugin-item {
-  padding: 4px 8px;
+  padding: 6px 8px;
   transition: background var(--transition);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  margin: 1px 4px;
 }
 
 .plugin-item:hover {
   background: var(--bg-hover);
+}
+
+.plugin-item.enabled {
+  border-left: 2px solid var(--green);
 }
 
 .plugin-item-header {
@@ -599,6 +890,103 @@
 .plugin-name {
   color: var(--cream);
   font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-badge {
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.badge-enabled {
+  color: var(--green);
+  border: 1px solid var(--green);
+  background: rgba(122, 184, 122, 0.1);
+}
+
+.badge-disabled {
+  color: var(--cream-faint);
+  border: 1px solid var(--border-dim);
+}
+
+.plugin-on-off-btn {
+  padding: 2px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all var(--transition);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+}
+
+.plugin-on-off-btn.is-on {
+  background: rgba(122, 184, 122, 0.15);
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.plugin-on-off-btn.is-on:hover {
+  background: rgba(192, 112, 112, 0.15);
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.plugin-on-off-btn.is-off {
+  background: transparent;
+  color: var(--cream-faint);
+  border-color: var(--border-dim);
+}
+
+.plugin-on-off-btn.is-off:hover {
+  background: rgba(122, 184, 122, 0.15);
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.plugin-meta {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0 0 22px;
+  font-size: var(--font-size-xs);
+}
+
+.plugin-source {
+  color: var(--cream-dim);
+}
+
+.plugin-version {
+  color: var(--cream-faint);
+}
+
+.plugin-desc {
+  font-size: var(--font-size-xs);
+  color: var(--cream-faint);
+  padding: 2px 0 2px 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-type-tag {
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.cmd-tag {
+  color: var(--blue);
+  border: 1px solid var(--blue);
+  background: rgba(122, 160, 200, 0.1);
 }
 
 .plugin-toggle-btn {
@@ -620,6 +1008,15 @@
 .plugin-toggle-btn:hover {
   background: var(--bg-hover);
   color: var(--cream);
+}
+
+/* ── Stat Card ────────────────────────────────────────── */
+
+.stat-card {
+  padding: 10px;
+  background: var(--bg-deep);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-dim);
 }
 
 /* ── Explorer Project Select ──────────────────────────── */

@@ -6,6 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { terminalTheme } from './terminal-theme.js';
 import { state } from '../state.js';
 import { events } from '../events.js';
+import { getAttachments, formatAttachmentsForInput } from '../attachments/attachment-popover.js';
 
 export class TerminalPane {
   constructor(paneIndex, containerEl) {
@@ -23,6 +24,7 @@ export class TerminalPane {
 
     this._setupInput();
     this._setupPaneControls();
+    this._setupDragDrop();
   }
 
   init(compact = false) {
@@ -136,7 +138,18 @@ export class TerminalPane {
       return;
     }
     if (text.trim()) {
-      window.api.pty.write(this.sessionId, text + '\r');
+      // Collect any file attachments and prepend as @path references
+      const attachments = getAttachments(this.containerEl);
+      let fullMessage = text;
+      if (attachments.length > 0) {
+        const attachmentRefs = formatAttachmentsForInput(attachments);
+        fullMessage = attachmentRefs + ' ' + text;
+        // Clear attachment pills after sending
+        const pillsContainer = this.containerEl.querySelector('.attachment-pills');
+        if (pillsContainer) pillsContainer.innerHTML = '';
+      }
+
+      window.api.pty.write(this.sessionId, fullMessage + '\r');
       // Also focus the terminal so user can see the response
       if (this.terminal) this.terminal.focus();
     }
@@ -323,4 +336,77 @@ export class TerminalPane {
       events.emit('pane:requestFocus', this.paneIndex);
     });
   }
+
+  /** Set up drag-and-drop file attachments on the terminal pane */
+  _setupDragDrop() {
+    const paneEl = this.containerEl;
+    const termContainer = this.terminalContainer;
+
+    // Prevent default browser drag behavior
+    paneEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      paneEl.classList.add('drag-over');
+      e.dataTransfer.dropEffect = 'copy';
+    });
+
+    paneEl.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Only remove if leaving the pane entirely
+      if (!paneEl.contains(e.relatedTarget)) {
+        paneEl.classList.remove('drag-over');
+      }
+    });
+
+    paneEl.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      paneEl.classList.remove('drag-over');
+
+      const files = e.dataTransfer.files;
+      if (files.length === 0) return;
+
+      const pillsContainer = paneEl.querySelector('.attachment-pills');
+      if (!pillsContainer) return;
+
+      for (const file of files) {
+        const filePath = file.path; // Electron provides the full path
+        if (!filePath) continue;
+
+        const filename = filePath.split(/[\\/]/).pop();
+
+        // Check if already attached
+        const existing = pillsContainer.querySelectorAll('.attachment-pill');
+        let duplicate = false;
+        existing.forEach(p => { if (p.dataset.path === filePath) duplicate = true; });
+        if (duplicate) continue;
+
+        const pill = document.createElement('div');
+        pill.className = 'attachment-pill';
+        pill.dataset.path = filePath;
+        pill.title = filePath;
+        pill.innerHTML = `
+          <span class="attachment-pill-icon">&#128206;</span>
+          <span>${escapeHtml(filename)}</span>
+          <button class="attachment-pill-remove">&times;</button>
+        `;
+
+        pill.querySelector('.attachment-pill-remove').addEventListener('click', () => {
+          pill.remove();
+        });
+
+        pillsContainer.appendChild(pill);
+      }
+
+      // Focus the input so user can type their message
+      if (this.inputEl) this.inputEl.focus();
+    });
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }

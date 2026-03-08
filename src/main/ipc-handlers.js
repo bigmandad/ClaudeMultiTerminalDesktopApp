@@ -413,20 +413,34 @@ function registerIpcHandlers(ipcMain) {
         result.planType = 'API Key';
       }
 
-      // Fallback: try `claude auth status`
+      // Fallback: try `claude auth status` (returns JSON)
       if (!result.authenticated) {
         const authOutput = await new Promise((resolve) => {
           execFile('claude', ['auth', 'status'], { timeout: 10000, shell: true }, (err, stdout, stderr) => {
             resolve((stdout || '') + (stderr || ''));
           });
         });
-        const lower = authOutput.toLowerCase();
-        if (lower.includes('authenticated') || lower.includes('logged in') || lower.includes('active') || lower.includes('valid')) {
-          result.authenticated = true;
-          const emailMatch = authOutput.match(/[\w.-]+@[\w.-]+\.\w+/);
-          if (emailMatch) result.accountEmail = emailMatch[0];
-          const planMatch = authOutput.match(/plan[:\s]+(\w+)/i);
-          if (planMatch) result.planType = planMatch[1];
+
+        // Claude CLI returns JSON like: {"loggedIn":true,"authMethod":"oauth_token","apiProvider":"firstParty"}
+        try {
+          const authJson = JSON.parse(authOutput.trim());
+          if (authJson.loggedIn === true) {
+            result.authenticated = true;
+            result.planType = authJson.authMethod || authJson.apiProvider || null;
+            if (authJson.email) result.accountEmail = authJson.email;
+          }
+        } catch (jsonErr) {
+          // Not JSON — try keyword matching as fallback
+          const lower = authOutput.toLowerCase();
+          if (lower.includes('authenticated') || lower.includes('logged in') || lower.includes('loggedin') ||
+              lower.includes('"loggedin":true') || lower.includes('"loggedin": true') ||
+              lower.includes('active') || lower.includes('valid')) {
+            result.authenticated = true;
+            const emailMatch = authOutput.match(/[\w.-]+@[\w.-]+\.\w+/);
+            if (emailMatch) result.accountEmail = emailMatch[0];
+            const planMatch = authOutput.match(/plan[:\s]+(\w+)/i);
+            if (planMatch) result.planType = planMatch[1];
+          }
         }
       }
     } catch (e) {
@@ -469,8 +483,9 @@ function registerIpcHandlers(ipcMain) {
   // ── Usage JSON (from Claude CLI) ─────────────────────────
 
   ipcMain.handle('usage:readCliUsage', () => {
-    // Try reading ~/.claude/usage.json or ~/.claude/statsig/usage
+    // Read usage data from Claude CLI's stats-cache.json (primary) or usage.json (fallback)
     const possiblePaths = [
+      path.join(os.homedir(), '.claude', 'stats-cache.json'),
       path.join(os.homedir(), '.claude', 'usage.json'),
       path.join(os.homedir(), '.claude', 'statsig', 'usage.json')
     ];
@@ -487,7 +502,7 @@ function registerIpcHandlers(ipcMain) {
   // ── Plugins Detection ─────────────────────────────────────
 
   ipcMain.handle('plugins:detect', () => {
-    const results = { mcpServers: {}, plugins: [], settings: {} };
+    const results = { mcpServers: {}, plugins: [], settings: {}, installedPlugins: {} };
 
     // Read MCP servers from global config
     try {
@@ -503,49 +518,212 @@ function registerIpcHandlers(ipcMain) {
       }
     } catch (e) { /* skip */ }
 
-    // Scan for installed plugins in common locations
-    const pluginDirs = [
-      path.join(os.homedir(), '.claude', 'plugins'),
-      path.join(os.homedir(), '.claude', 'commands'),
-    ];
+    // Read installed_plugins.json (official Claude plugin registry)
+    const installedPath = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
+    try {
+      if (fs.existsSync(installedPath)) {
+        const installed = JSON.parse(fs.readFileSync(installedPath, 'utf-8'));
+        results.installedPlugins = installed.plugins || {};
 
-    for (const dir of pluginDirs) {
-      try {
-        if (fs.existsSync(dir)) {
-          const items = fs.readdirSync(dir);
-          for (const item of items) {
-            const itemPath = path.join(dir, item);
-            const stat = fs.statSync(itemPath);
-            if (stat.isDirectory()) {
-              // Check for plugin.json
-              const pluginJsonPath = path.join(itemPath, 'plugin.json');
-              if (fs.existsSync(pluginJsonPath)) {
-                try {
-                  const pluginJson = JSON.parse(fs.readFileSync(pluginJsonPath, 'utf-8'));
-                  results.plugins.push({
-                    name: pluginJson.name || item,
-                    description: pluginJson.description || '',
-                    path: itemPath,
-                    type: 'plugin'
-                  });
-                } catch (e) {
-                  results.plugins.push({ name: item, path: itemPath, type: 'plugin', description: 'Plugin directory' });
-                }
+        // Convert each installed plugin to our plugin list format
+        for (const [pluginId, entries] of Object.entries(results.installedPlugins)) {
+          const entry = Array.isArray(entries) ? entries[0] : entries;
+          const enabled = results.settings?.enabledPlugins?.[pluginId] === true;
+          const nameParts = pluginId.split('@');
+          const pluginName = nameParts[0] || pluginId;
+          const source = nameParts[1] || 'unknown';
+
+          // Try to read plugin.json from install path for description
+          let description = '';
+          let pluginType = 'plugin';
+          if (entry.installPath) {
+            try {
+              const pjPath = path.join(entry.installPath, 'plugin.json');
+              if (fs.existsSync(pjPath)) {
+                const pj = JSON.parse(fs.readFileSync(pjPath, 'utf-8'));
+                description = pj.description || '';
+                pluginType = pj.type || 'plugin';
               }
-            } else if (item.endsWith('.md') || item.endsWith('.js')) {
-              results.plugins.push({
-                name: item.replace(/\.(md|js)$/, ''),
-                path: itemPath,
-                type: item.endsWith('.md') ? 'command' : 'script',
-                description: `Custom ${item.endsWith('.md') ? 'command' : 'script'}`
-              });
-            }
+            } catch (e) { /* skip */ }
+          }
+
+          results.plugins.push({
+            id: pluginId,
+            name: pluginName,
+            description: description,
+            source: source,
+            path: entry.installPath || '',
+            type: pluginType,
+            version: entry.version || '',
+            enabled: enabled,
+            installedAt: entry.installedAt || '',
+            lastUpdated: entry.lastUpdated || ''
+          });
+        }
+      }
+    } catch (e) { /* skip */ }
+
+    // Scan for any additional plugins in commands dir
+    const commandsDir = path.join(os.homedir(), '.claude', 'commands');
+    try {
+      if (fs.existsSync(commandsDir)) {
+        const items = fs.readdirSync(commandsDir);
+        for (const item of items) {
+          const itemPath = path.join(commandsDir, item);
+          if (item.endsWith('.md') || item.endsWith('.js')) {
+            results.plugins.push({
+              id: 'command:' + item,
+              name: item.replace(/\.(md|js)$/, ''),
+              path: itemPath,
+              type: item.endsWith('.md') ? 'command' : 'script',
+              description: `Custom ${item.endsWith('.md') ? 'command' : 'script'}`,
+              enabled: true,
+              source: 'local'
+            });
           }
         }
-      } catch (e) { /* skip */ }
-    }
+      }
+    } catch (e) { /* skip */ }
 
     return results;
+  });
+
+  // Toggle plugin on/off in settings.json
+  ipcMain.handle('plugins:toggle', (event, pluginId, enabled) => {
+    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+    try {
+      let settings = {};
+      if (fs.existsSync(settingsPath)) {
+        settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      }
+      if (!settings.enabledPlugins) settings.enabledPlugins = {};
+      if (enabled) {
+        settings.enabledPlugins[pluginId] = true;
+      } else {
+        delete settings.enabledPlugins[pluginId];
+      }
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      return { success: true, enabled };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  // Upload a plugin from a local zip/folder
+  ipcMain.handle('plugins:upload', async (event, opts) => {
+    const { filePaths } = opts;
+    if (!filePaths || filePaths.length === 0) return { success: false, error: 'No files selected' };
+
+    const pluginsDir = path.join(os.homedir(), '.claude', 'plugins');
+    if (!fs.existsSync(pluginsDir)) fs.mkdirSync(pluginsDir, { recursive: true });
+
+    const results = [];
+    for (const filePath of filePaths) {
+      try {
+        const stat = fs.statSync(filePath);
+        const basename = path.basename(filePath);
+
+        if (stat.isDirectory()) {
+          // Copy plugin directory
+          const destDir = path.join(pluginsDir, basename);
+          copyDirSync(filePath, destDir);
+          results.push({ name: basename, path: destDir, type: 'directory' });
+        } else if (filePath.endsWith('.zip')) {
+          // For zip files, just copy to plugins directory — user would extract manually
+          const destPath = path.join(pluginsDir, basename);
+          fs.copyFileSync(filePath, destPath);
+          results.push({ name: basename, path: destPath, type: 'zip' });
+        } else if (filePath.endsWith('.js') || filePath.endsWith('.md')) {
+          // Script or command file — copy to commands directory
+          const commandsDir = path.join(os.homedir(), '.claude', 'commands');
+          if (!fs.existsSync(commandsDir)) fs.mkdirSync(commandsDir, { recursive: true });
+          const destPath = path.join(commandsDir, basename);
+          fs.copyFileSync(filePath, destPath);
+          results.push({ name: basename, path: destPath, type: filePath.endsWith('.md') ? 'command' : 'script' });
+        }
+      } catch (e) {
+        results.push({ name: path.basename(filePath), error: e.message });
+      }
+    }
+    return { success: true, results };
+  });
+
+  // ── Group Coordination ─────────────────────────────────
+
+  ipcMain.handle('group:createSharedFolder', (event, opts) => {
+    // Create a shared group folder with member workspaces synced in
+    const { groupName, memberNames, memberWorkspaces } = opts;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const folderName = `${memberNames.join('_')}_${timestamp}`;
+    const groupsRoot = path.join(os.homedir(), '.claude-sessions', 'group-workspaces');
+    const groupFolder = path.join(groupsRoot, folderName);
+
+    try {
+      // Create group folder
+      fs.mkdirSync(groupFolder, { recursive: true });
+
+      // Create a subfolder for each member and copy/symlink their workspace
+      for (let i = 0; i < memberNames.length; i++) {
+        const memberDir = path.join(groupFolder, memberNames[i]);
+        fs.mkdirSync(memberDir, { recursive: true });
+
+        // Write a reference file pointing to the member's actual workspace
+        const refFile = path.join(memberDir, '_workspace_ref.json');
+        fs.writeFileSync(refFile, JSON.stringify({
+          sessionName: memberNames[i],
+          workspacePath: memberWorkspaces[i] || '',
+          linkedAt: new Date().toISOString()
+        }, null, 2));
+
+        // Copy workspace if exists and is small enough
+        if (memberWorkspaces[i] && fs.existsSync(memberWorkspaces[i])) {
+          try {
+            // Create a junction/symlink to the actual workspace for live sync
+            const linkPath = path.join(memberDir, 'workspace');
+            if (process.platform === 'win32') {
+              require('child_process').execSync(`mklink /J "${linkPath}" "${memberWorkspaces[i]}"`, { shell: true });
+            } else {
+              fs.symlinkSync(memberWorkspaces[i], linkPath, 'junction');
+            }
+          } catch (linkErr) {
+            // If symlink fails, write the path reference
+            fs.writeFileSync(path.join(memberDir, 'workspace_path.txt'), memberWorkspaces[i]);
+          }
+        }
+      }
+
+      // Create a shared correspondence log
+      const logFile = path.join(groupFolder, 'correspondence.md');
+      fs.writeFileSync(logFile, `# Group: ${groupName}\n\nMembers: ${memberNames.join(', ')}\nCreated: ${new Date().toISOString()}\n\n---\n\n`);
+
+      return { success: true, path: groupFolder, logFile };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('group:appendCorrespondence', (event, opts) => {
+    const { folderPath, from, to, message } = opts;
+    const logFile = path.join(folderPath, 'correspondence.md');
+    try {
+      const entry = `## ${from} → ${to}\n**${new Date().toISOString()}**\n\n${message}\n\n---\n\n`;
+      fs.appendFileSync(logFile, entry);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('group:readCorrespondence', (event, folderPath) => {
+    const logFile = path.join(folderPath, 'correspondence.md');
+    try {
+      if (fs.existsSync(logFile)) {
+        return { content: fs.readFileSync(logFile, 'utf-8') };
+      }
+      return { content: '' };
+    } catch (e) {
+      return { error: e.message };
+    }
   });
 
   // ── Remote API ──────────────────────────────────────────
@@ -579,6 +757,20 @@ function cleanup() {
   transcriber.closeAll();
   mcpManager.stopAll();
   db.close();
+}
+
+function copyDirSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
 }
 
 module.exports = { registerIpcHandlers, cleanup };
