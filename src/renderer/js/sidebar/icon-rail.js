@@ -55,7 +55,8 @@ function updatePanelVisibility(activePanel) {
     sessions: 'sessions-panel',
     explorer: 'explorer-panel',
     plugins: 'plugins-panel',
-    openviking: 'openviking-panel'
+    openviking: 'openviking-panel',
+    autoresearch: 'autoresearch-panel'
   };
 
   for (const [key, id] of Object.entries(panels)) {

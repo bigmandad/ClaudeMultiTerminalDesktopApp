@@ -1067,6 +1067,152 @@ function registerIpcHandlers(ipcMain) {
       return { error: err.message };
     }
   });
+
+  // ── AutoResearch ───────────────────────────────────────────
+
+  const targetAnalyzer = require('./autoresearch/target-analyzer');
+  const experimentTracker = require('./autoresearch/experiment-tracker');
+  const researchEngine = require('./autoresearch/research-engine');
+
+  // Initialize research engine with references
+  researchEngine.init({
+    ptySpawn: PtyManager.create.bind(PtyManager),
+    ptyWrite: PtyManager.write.bind(PtyManager),
+    ovClient,
+    db
+  });
+
+  // Forward research status changes to renderer
+  researchEngine.onStatus((status) => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('research:statusChanged', status);
+    }
+  });
+
+  // Forward experiment completions to renderer
+  researchEngine.onExperiment((result) => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('research:experimentComplete', result);
+    }
+  });
+
+  // Scan all available targets (plugins, MCPs, skills)
+  ipcMain.handle('research:listTargets', () => {
+    return targetAnalyzer.scanAll();
+  });
+
+  // Deep-analyze a single target
+  ipcMain.handle('research:analyzeTarget', (event, targetId) => {
+    return targetAnalyzer.analyze(targetId);
+  });
+
+  // Start autonomous research on a target
+  ipcMain.handle('research:start', async (event, config) => {
+    const result = await researchEngine.startResearch(config);
+    if (!result.success) return result;
+
+    // Spawn a dedicated PTY session for the research agent
+    try {
+      const session = PtyManager.create(result.sessionId, {
+        cwd: result.workspacePath,
+        cols: 120,
+        rows: 40,
+        mode: 'auto-accept',
+        skipPerms: true,
+        launchClaude: true,
+        systemPrompt: result.initialPrompt
+      });
+
+      session.onDataCallback = (data) => {
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('pty:data', { id: result.sessionId, data });
+        }
+        // Process output for experiment result detection
+        researchEngine.processOutput(result.sessionId, data);
+      };
+
+      session.onExitCallback = (exitCode) => {
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('pty:exit', { id: result.sessionId, exitCode });
+        }
+        researchEngine.stopResearch(result.targetId);
+      };
+
+      session.spawn();
+    } catch (err) {
+      researchEngine.stopResearch(result.targetId);
+      return { success: false, error: `PTY spawn failed: ${err.message}` };
+    }
+
+    return result;
+  });
+
+  // Stop research
+  ipcMain.handle('research:stop', (event, targetId) => {
+    const status = researchEngine.getStatus(targetId);
+    if (status.sessionId) {
+      try { PtyManager.kill(status.sessionId); } catch { /* ignore */ }
+    }
+    return researchEngine.stopResearch(targetId);
+  });
+
+  // Pause research
+  ipcMain.handle('research:pause', (event, targetId) => {
+    return researchEngine.pauseResearch(targetId);
+  });
+
+  // Get status for a single target
+  ipcMain.handle('research:status', (event, targetId) => {
+    return researchEngine.getStatus(targetId);
+  });
+
+  // Get status of all active research
+  ipcMain.handle('research:allStatus', () => {
+    return researchEngine.getAllStatus();
+  });
+
+  // Get experiments for a target (from DB)
+  ipcMain.handle('research:experiments', (event, targetId, limit) => {
+    return db.experiments.getByTarget(targetId, limit);
+  });
+
+  // Get experiment timeline for a target
+  ipcMain.handle('research:timeline', (event, targetId) => {
+    return db.experiments.getTimeline(targetId);
+  });
+
+  // Get best experiment for a target
+  ipcMain.handle('research:bestMetrics', (event, targetId) => {
+    return db.experiments.getBestByTarget(targetId);
+  });
+
+  // Get recent experiments across all targets
+  ipcMain.handle('research:recentExperiments', (event, limit) => {
+    return db.experiments.getRecent(limit);
+  });
+
+  // Get experiment stats from TSV
+  ipcMain.handle('research:stats', (event, targetId) => {
+    return experimentTracker.getStats(targetId);
+  });
+
+  // Get all research targets from DB
+  ipcMain.handle('research:dbTargets', () => {
+    return db.researchTargets.list();
+  });
+
+  // Delete a research target and its experiments
+  ipcMain.handle('research:deleteTarget', (event, targetId) => {
+    try {
+      researchEngine.stopResearch(targetId);
+    } catch { /* may not be active */ }
+    db.researchTargets.delete(targetId);
+    return { success: true };
+  });
 }
 
 function cleanup() {

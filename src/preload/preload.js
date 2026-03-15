@@ -154,6 +154,34 @@ contextBridge.exposeInMainWorld('api', {
     set: (key, value) => ipcRenderer.invoke('appState:set', key, value)
   },
 
+  // ── AutoResearch ─────────────────────────────────────────
+  research: {
+    listTargets: () => ipcRenderer.invoke('research:listTargets'),
+    analyzeTarget: (targetId) => ipcRenderer.invoke('research:analyzeTarget', targetId),
+    start: (config) => ipcRenderer.invoke('research:start', config),
+    stop: (targetId) => ipcRenderer.invoke('research:stop', targetId),
+    pause: (targetId) => ipcRenderer.invoke('research:pause', targetId),
+    status: (targetId) => ipcRenderer.invoke('research:status', targetId),
+    allStatus: () => ipcRenderer.invoke('research:allStatus'),
+    experiments: (targetId, limit) => ipcRenderer.invoke('research:experiments', targetId, limit),
+    timeline: (targetId) => ipcRenderer.invoke('research:timeline', targetId),
+    bestMetrics: (targetId) => ipcRenderer.invoke('research:bestMetrics', targetId),
+    recentExperiments: (limit) => ipcRenderer.invoke('research:recentExperiments', limit),
+    stats: (targetId) => ipcRenderer.invoke('research:stats', targetId),
+    dbTargets: () => ipcRenderer.invoke('research:dbTargets'),
+    deleteTarget: (targetId) => ipcRenderer.invoke('research:deleteTarget', targetId),
+    onStatusChanged: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('research:statusChanged', handler);
+      return () => ipcRenderer.removeListener('research:statusChanged', handler);
+    },
+    onExperimentComplete: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('research:experimentComplete', handler);
+      return () => ipcRenderer.removeListener('research:experimentComplete', handler);
+    }
+  },
+
   // ── OpenViking Context Database ─────────────────────────
   openviking: {
     start: () => ipcRenderer.invoke('openviking:start'),

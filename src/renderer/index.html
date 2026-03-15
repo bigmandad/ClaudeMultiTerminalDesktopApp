@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="styles/components.css">
   <link rel="stylesheet" href="styles/file-explorer.css">
   <link rel="stylesheet" href="styles/forms.css">
+  <link rel="stylesheet" href="styles/autoresearch.css">
   <link rel="stylesheet" href="../../dist/xterm.css">
 </head>
 <body>
@@ -32,6 +33,9 @@
         </button>
         <button class="rail-btn" id="openviking-rail-btn" data-panel="openviking" title="OpenViking Context DB">
           <span class="rail-icon">&#9883;</span>
+        </button>
+        <button class="rail-btn" id="autoresearch-rail-btn" data-panel="autoresearch" title="AutoResearch">
+          <span class="rail-icon">&#128300;</span>
         </button>
         <div class="rail-divider"></div>
         <button class="rail-btn layout-btn active" data-layout="single" title="Single Pane">
@@ -82,6 +86,9 @@
           <div class="sys-dot" id="ollama-status-dot" title="Ollama: Checking..." data-system="ollama">
             <span class="sys-dot-icon">O</span>
           </div>
+          <div class="sys-dot" id="research-status-dot" title="Research: Idle" data-system="research">
+            <span class="sys-dot-icon">R</span>
+          </div>
         </div>
       </div>
     </div>
@@ -122,6 +129,20 @@
         </div>
         <div id="plugins-list"></div>
         <div class="panel-footer">run /mcp in session to verify</div>
+      </div>
+
+      <!-- AutoResearch Panel -->
+      <div class="panel-content hidden" id="autoresearch-panel">
+        <div class="panel-header">
+          <span>AUTORESEARCH</span>
+        </div>
+        <div class="ar-tabs">
+          <button class="ar-tab active" data-ar-tab="targets">Targets</button>
+          <button class="ar-tab" data-ar-tab="live">Live</button>
+          <button class="ar-tab" data-ar-tab="timeline">Timeline</button>
+          <button class="ar-tab" data-ar-tab="insights">Insights</button>
+        </div>
+        <div id="ar-content" class="ar-content"></div>
       </div>
 
       <!-- OpenViking Panel -->

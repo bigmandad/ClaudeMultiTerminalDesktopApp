@@ -61,9 +61,42 @@ CREATE TABLE IF NOT EXISTS recent_paths (
   last_used TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS research_targets (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  name TEXT NOT NULL,
+  source_path TEXT,
+  editable_files TEXT,
+  baseline_metrics TEXT,
+  best_metrics TEXT,
+  total_experiments INTEGER DEFAULT 0,
+  total_improvements INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'idle',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS experiments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  target_id TEXT NOT NULL,
+  session_id TEXT,
+  commit_hash TEXT,
+  metric_name TEXT,
+  metric_value REAL,
+  status TEXT,
+  description TEXT,
+  diff_summary TEXT,
+  duration_seconds REAL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (target_id) REFERENCES research_targets(id)
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_sessions_group ON sessions(group_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_path);
 CREATE INDEX IF NOT EXISTS idx_transcripts_session ON transcripts(session_id);
 CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_stats(session_id);
 CREATE INDEX IF NOT EXISTS idx_recent_paths_session ON recent_paths(session_id);
+CREATE INDEX IF NOT EXISTS idx_experiments_target ON experiments(target_id);
+CREATE INDEX IF NOT EXISTS idx_experiments_status ON experiments(status);
+CREATE INDEX IF NOT EXISTS idx_research_targets_type ON research_targets(type);

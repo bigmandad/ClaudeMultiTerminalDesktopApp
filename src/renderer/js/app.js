@@ -33,6 +33,7 @@ import { initQuickLaunch } from './session/quick-launch.js';
 import { initOpenVikingPanel } from './openviking/openviking-panel.js';
 import { initKnowledgeSearch } from './openviking/knowledge-search.js';
 import { initSystemStatus } from './stats/system-status.js';
+import { initAutoResearchPanel } from './autoresearch/autoresearch-panel.js';
 
 // ── Initialize ────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ async function init() {
   initOpenVikingPanel();
   initKnowledgeSearch();
   initSystemStatus();
+  initAutoResearchPanel();
 
   // Tab key prevention on ALL inputs globally
   document.addEventListener('keydown', (e) => {
