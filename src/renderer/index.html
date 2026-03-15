@@ -30,6 +30,9 @@
         <button class="rail-btn" data-panel="plugins" title="Plugins & MCP">
           <span class="rail-icon">&#10033;</span>
         </button>
+        <button class="rail-btn" id="openviking-rail-btn" data-panel="openviking" title="OpenViking Context DB">
+          <span class="rail-icon">&#9883;</span>
+        </button>
         <div class="rail-divider"></div>
         <button class="rail-btn layout-btn active" data-layout="single" title="Single Pane">
           <span class="rail-icon">&#9635;</span>
@@ -68,7 +71,18 @@
           <div class="auth-dot" id="auth-status-dot" title="Checking Claude CLI..."></div>
           <span class="auth-label" id="auth-status-label">Checking...</span>
         </div>
-        <div class="mcp-status-dot" id="mcp-global-dot" title="MCP Status"></div>
+        <!-- Unified System Status -->
+        <div class="system-status-strip" id="system-status-strip">
+          <div class="sys-dot" id="mcp-global-dot" title="MCP: Checking..." data-system="mcp">
+            <span class="sys-dot-icon">M</span>
+          </div>
+          <div class="sys-dot" id="openviking-status-dot" title="OpenViking: Checking..." data-system="ov">
+            <span class="sys-dot-icon">V</span>
+          </div>
+          <div class="sys-dot" id="ollama-status-dot" title="Ollama: Checking..." data-system="ollama">
+            <span class="sys-dot-icon">O</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -108,6 +122,20 @@
         </div>
         <div id="plugins-list"></div>
         <div class="panel-footer">run /mcp in session to verify</div>
+      </div>
+
+      <!-- OpenViking Panel -->
+      <div class="panel-content hidden" id="openviking-panel">
+        <div class="panel-header">
+          <span>OPENVIKING</span>
+        </div>
+        <div class="ov-tabs">
+          <button class="ov-tab active" data-ov-tab="search">Search</button>
+          <button class="ov-tab" data-ov-tab="memories">Memories</button>
+          <button class="ov-tab" data-ov-tab="browse">Browse</button>
+          <button class="ov-tab" data-ov-tab="status">Status</button>
+        </div>
+        <div id="ov-content" class="ov-content"></div>
       </div>
     </div>
 
@@ -152,6 +180,7 @@
                 <input type="checkbox" class="skip-perms-check">
                 <span class="skip-perms-label">SKIP PERMS</span>
               </label>
+              <button class="pane-btn knowledge-btn" title="Search Knowledge Base">&#128270;</button>
               <button class="pane-btn relay-btn" title="Relay to group">&#8594;</button>
               <button class="pane-btn journal-btn" title="Journal">&#128203;</button>
               <button class="pane-btn diff-btn" title="Diff stats"></button>
@@ -225,6 +254,12 @@
               <input type="checkbox" id="session-github-repo">
               <span>Create GitHub Repository</span>
             </label>
+          </div>
+          <div class="form-group" id="knowledge-context-section">
+            <label>Knowledge Context <span style="opacity:0.5;font-size:10px">(from OpenViking)</span></label>
+            <div class="knowledge-context-suggestions" id="knowledge-context-suggestions">
+              <div class="knowledge-ctx-hint">Relevant knowledge will appear when you set a workspace path.</div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">

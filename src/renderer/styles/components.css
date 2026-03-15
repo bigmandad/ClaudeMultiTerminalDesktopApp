@@ -646,6 +646,72 @@
   font-weight: 500;
 }
 
+/* ── Journal / Transcript Viewer ──────────────────────── */
+
+.journal-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+}
+
+.journal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-dim);
+  font-weight: 500;
+  font-size: var(--font-size-sm);
+}
+
+.journal-date-select {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+}
+
+.journal-content {
+  flex: 1;
+  overflow: auto;
+}
+
+.journal-output {
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--cream-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+/* ── Diff Stats Badge ─────────────────────────────────── */
+
+.diff-stats-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  font-family: var(--font-mono);
+}
+
+.diff-stats-badge .additions {
+  color: var(--green);
+}
+
+.diff-stats-badge .deletions {
+  color: var(--red);
+}
+
 /* ── Attachment Popover ────────────────────────────────── */
 
 .attachment-popover {
@@ -820,4 +886,519 @@
 
 .quick-launch-btn span {
   font-size: 14px;
+}
+
+/* ── OpenViking Panel ──────────────────────────────── */
+
+.ov-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 4px;
+}
+
+.ov-tab {
+  flex: 1;
+  padding: 6px 4px;
+  border: none;
+  background: none;
+  color: var(--cream-faint);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition);
+}
+
+.ov-tab:hover {
+  color: var(--cream-dim);
+}
+
+.ov-tab.active {
+  color: var(--orange);
+  border-bottom-color: var(--orange);
+}
+
+.ov-content {
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.ov-search-box {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.ov-search-box input {
+  flex: 1;
+  min-width: 80px;
+  padding: 4px 8px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.ov-search-box input:focus {
+  border-color: var(--orange);
+  outline: none;
+}
+
+.ov-search-box select {
+  padding: 4px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--cream-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.ov-tier-select {
+  width: 90px;
+}
+
+.ov-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ov-result-card {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  transition: border-color var(--transition);
+}
+
+.ov-result-card:hover {
+  border-color: var(--orange);
+}
+
+.ov-memory-card {
+  border-left: 3px solid #8b6cc7;
+}
+
+.ov-result-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.ov-score {
+  background: var(--orange);
+  color: var(--bg-deep);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 9px;
+}
+
+.ov-result-uri {
+  color: var(--cream-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-memory-tag {
+  background: #8b6cc7;
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 9px;
+}
+
+.ov-result-body {
+  font-size: var(--font-size-xs);
+  color: var(--cream-dim);
+  line-height: 1.4;
+  word-break: break-word;
+  max-height: 120px;
+  overflow: hidden;
+}
+
+.ov-empty {
+  padding: 20px 8px;
+  text-align: center;
+  color: var(--cream-faint);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.ov-toolbar {
+  margin-bottom: 6px;
+}
+
+.ov-tree {
+  font-size: var(--font-size-xs);
+  color: var(--cream-dim);
+}
+
+.ov-tree-folder {
+  color: var(--orange);
+  font-weight: 500;
+  padding: 2px 0;
+  cursor: default;
+}
+
+.ov-tree-item {
+  color: var(--cream-dim);
+  padding: 1px 0;
+}
+
+.ov-status-panel {
+  padding: 4px 0;
+}
+
+.ov-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ov-status-indicator {
+  padding: 3px 10px;
+  border-radius: var(--radius);
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-deep);
+  color: var(--cream-faint);
+  border: 1px solid var(--border);
+}
+
+.ov-status-indicator.active {
+  background: rgba(110, 199, 110, 0.15);
+  color: #6ec76e;
+  border-color: #6ec76e;
+}
+
+.ov-status-info {
+  margin-bottom: 8px;
+}
+
+.ov-stat {
+  font-size: var(--font-size-xs);
+  color: var(--cream-dim);
+  padding: 2px 0;
+}
+
+.ov-stat-val {
+  color: var(--orange);
+  font-weight: 600;
+}
+
+.ov-stat-sub {
+  font-size: 10px;
+  color: var(--cream-faint);
+}
+
+.ov-divider {
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+}
+
+.ov-actions {
+  padding: 4px 0;
+}
+
+.ov-actions-hint {
+  font-size: 10px;
+  color: var(--cream-faint);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.ov-about {
+  padding: 4px 0;
+}
+
+.ov-about-title {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--cream);
+  margin-bottom: 4px;
+}
+
+.ov-about-desc {
+  font-size: 10px;
+  color: var(--cream-faint);
+  line-height: 1.4;
+}
+
+/* ── Unified System Status Strip ────────────────────────── */
+
+.system-status-strip {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  padding: 4px 0 2px;
+}
+
+.sys-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.3s, box-shadow 0.3s;
+  position: relative;
+}
+
+.sys-dot:hover {
+  box-shadow: 0 0 6px rgba(212,132,90,0.4);
+}
+
+.sys-dot-icon {
+  font-size: 9px;
+  font-weight: bold;
+  color: rgba(255,255,255,0.7);
+  font-family: var(--font-mono);
+}
+
+.sys-popover {
+  position: fixed;
+  background: var(--bg-lighter);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  min-width: 160px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  z-index: 9999;
+}
+
+.sys-popover-title {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: var(--cream);
+  margin-bottom: 4px;
+}
+
+.sys-popover-status {
+  font-size: var(--font-size-xs);
+  margin-bottom: 4px;
+}
+.sys-popover-status.ok { color: #6ec76e; }
+.sys-popover-status.starting { color: #d4845a; }
+.sys-popover-status.error { color: #cc4444; }
+.sys-popover-status.off { color: #888; }
+
+.sys-popover-detail {
+  font-size: 10px;
+  color: var(--cream-faint);
+  padding-left: 12px;
+}
+
+/* ── Knowledge Search Overlay ───────────────────────────── */
+
+.knowledge-overlay {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  max-height: 45%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.knowledge-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.knowledge-title {
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  color: var(--cream);
+}
+
+.knowledge-header-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.knowledge-header-actions select {
+  font-size: 10px;
+  padding: 1px 4px;
+  background: var(--bg-lighter);
+  border: 1px solid var(--border);
+  color: var(--cream);
+  border-radius: var(--radius);
+}
+
+.knowledge-search-row {
+  display: flex;
+  gap: 6px;
+}
+
+.knowledge-query {
+  flex: 1;
+  background: var(--bg-lighter);
+  border: 1px solid var(--border);
+  color: var(--cream);
+  padding: 4px 8px;
+  font-size: var(--font-size-xs);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+}
+
+.knowledge-query:focus {
+  border-color: var(--orange);
+  outline: none;
+}
+
+.knowledge-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.knowledge-empty {
+  color: var(--cream-faint);
+  font-size: 10px;
+  text-align: center;
+  padding: 12px;
+}
+
+.knowledge-result-card {
+  background: var(--bg-lighter);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+
+.knowledge-result-card:hover {
+  border-color: var(--orange);
+}
+
+.knowledge-result-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.knowledge-score {
+  font-size: 9px;
+  font-weight: bold;
+  color: var(--orange);
+  min-width: 28px;
+}
+
+.knowledge-mem-tag {
+  font-size: 8px;
+  padding: 1px 4px;
+  background: rgba(212,132,90,0.15);
+  color: var(--orange);
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.knowledge-uri {
+  font-size: 10px;
+  color: var(--cream-faint);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-insert-btn {
+  font-size: 9px;
+  padding: 1px 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--cream);
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.knowledge-insert-btn:hover {
+  background: var(--orange);
+  color: var(--bg);
+  border-color: var(--orange);
+}
+
+.knowledge-result-preview {
+  font-size: 10px;
+  color: var(--cream-faint);
+  line-height: 1.3;
+  max-height: 45px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Knowledge Context in Session Modal ─────────────────── */
+
+.knowledge-context-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.knowledge-ctx-hint {
+  font-size: 10px;
+  color: var(--cream-faint);
+  padding: 4px;
+}
+
+.knowledge-ctx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(212,132,90,0.1);
+  border: 1px solid rgba(212,132,90,0.3);
+  border-radius: 12px;
+  cursor: default;
+  transition: background 0.2s;
+}
+
+.knowledge-ctx-chip:hover {
+  background: rgba(212,132,90,0.2);
+}
+
+.knowledge-ctx-name {
+  font-size: 10px;
+  color: var(--cream);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-ctx-score {
+  font-size: 9px;
+  color: var(--orange);
+  font-weight: 600;
+}
+
+/* ── Knowledge Button in Pane Toolbar ───────────────────── */
+
+.knowledge-btn {
+  font-size: 13px;
+}
+
+.knowledge-btn:hover {
+  color: var(--orange);
 }

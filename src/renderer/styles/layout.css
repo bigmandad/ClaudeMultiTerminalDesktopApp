@@ -122,21 +122,6 @@
 .mini-fill.warning { background: var(--yellow); }
 .mini-fill.critical { background: var(--red); }
 
-/* ── MCP Status Dot ────────────────────────────────────── */
-
-.mcp-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--cream-faint);
-  margin: 4px auto;
-  transition: background-color var(--transition);
-}
-
-.mcp-status-dot.connected { background: var(--green); }
-.mcp-status-dot.partial { background: var(--yellow); }
-.mcp-status-dot.disconnected { background: var(--red); }
-
 /* ── Left Panel (220px) ───────────────────────────────── */
 
 #left-panel {
@@ -322,6 +307,16 @@
 .mode-badge.auto { background: rgba(122, 184, 122, 0.2); color: var(--green); }
 .mode-badge.plan { background: rgba(200, 169, 106, 0.2); color: var(--yellow); }
 .mode-badge.bypass { background: rgba(192, 112, 112, 0.2); color: var(--red); }
+.mode-badge.stopped { background: rgba(232, 221, 208, 0.1); color: var(--cream-faint); }
+
+.session-status-dot.stopped {
+  background: var(--cream-faint);
+  opacity: 0.4;
+}
+
+.stopped-name {
+  opacity: 0.6;
+}
 
 .skip-badge {
   font-size: 10px;
@@ -847,6 +842,7 @@
 .plugin-section-header {
   display: flex;
   align-items: center;
+  gap: 4px;
   padding: 8px 12px 4px;
   font-size: var(--font-size-xs);
   font-weight: 600;
@@ -855,6 +851,55 @@
   text-transform: uppercase;
   border-bottom: 1px solid var(--border-dim);
   margin-bottom: 2px;
+}
+
+.plugin-section-header.collapsible {
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+}
+
+.plugin-section-header.collapsible:hover {
+  background: var(--bg-hover);
+  color: var(--cream-dim);
+}
+
+.section-collapse-icon {
+  font-size: 8px;
+  width: 10px;
+  text-align: center;
+  transition: transform var(--transition);
+}
+
+.plugin-section-body.collapsed {
+  display: none;
+}
+
+/* ── Refresh Button ───────────────────────────────────── */
+
+.plugin-refresh-row {
+  padding: 8px 12px;
+  text-align: center;
+  border-top: 1px solid var(--border-dim);
+  margin-top: 8px;
+}
+
+.plugin-refresh-btn {
+  background: transparent;
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--cream-faint);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.plugin-refresh-btn:hover {
+  background: var(--bg-hover);
+  color: var(--orange);
+  border-color: var(--orange-dim);
 }
 
 .plugin-item {

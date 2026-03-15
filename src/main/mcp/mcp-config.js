@@ -3,16 +3,24 @@ const path = require('path');
 const os = require('os');
 
 function readGlobalConfig() {
-  const configPath = path.join(os.homedir(), '.claude.json');
-  try {
-    if (fs.existsSync(configPath)) {
-      const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      return data.mcpServers || {};
+  // Check multiple MCP config locations (Claude uses ~/.claude/.mcp.json as primary)
+  const configPaths = [
+    path.join(os.homedir(), '.claude', '.mcp.json'),
+    path.join(os.homedir(), '.claude.json')
+  ];
+  const merged = {};
+  for (const configPath of configPaths) {
+    try {
+      if (fs.existsSync(configPath)) {
+        const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        const servers = data.mcpServers || {};
+        Object.assign(merged, servers);
+      }
+    } catch (e) {
+      console.warn('Failed to read MCP config at', configPath, ':', e.message);
     }
-  } catch (e) {
-    console.warn('Failed to read global MCP config:', e.message);
   }
-  return {};
+  return merged;
 }
 
 function readWorkspaceConfig(workspacePath) {

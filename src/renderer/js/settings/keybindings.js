@@ -7,11 +7,7 @@ import { events } from '../events.js';
 
 export function initKeybindings() {
   document.addEventListener('keydown', (e) => {
-    // Ctrl+L: Cycle layout
-    if (e.ctrlKey && e.key === 'l') {
-      e.preventDefault();
-      events.emit('layout:cycle');
-    }
+    // Ctrl+L: Cycle layout — handled by layout-manager.js
 
     // Ctrl+Shift+B: Toggle broadcast
     if (e.ctrlKey && e.shiftKey && e.key === 'B') {

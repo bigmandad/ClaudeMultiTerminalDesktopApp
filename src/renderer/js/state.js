@@ -74,7 +74,6 @@ class StateStore {
 
   setFocusedPane(index) {
     this.focusedPaneIndex = index;
-    events.emit('pane:focused', index);
   }
 
   // ── Groups ─────────────────────────────────────────────
@@ -101,7 +100,6 @@ class StateStore {
 
   setLeftPanel(panel) {
     this.leftPanel = panel;
-    events.emit('panel:changed', panel);
   }
 
   // ── MCP ────────────────────────────────────────────────

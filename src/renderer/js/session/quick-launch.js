@@ -15,7 +15,6 @@ export function initQuickLaunch() {
     });
   }
 
-  events.on('quicklaunch:trigger', quickLaunch);
 }
 
 async function quickLaunch() {

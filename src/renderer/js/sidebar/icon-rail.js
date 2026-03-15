@@ -16,15 +16,7 @@ export function initIconRail() {
     });
   });
 
-  // Mute toggle
-  const muteBtn = document.getElementById('mute-btn');
-  if (muteBtn) {
-    muteBtn.addEventListener('click', () => {
-      state.muted = !state.muted;
-      muteBtn.querySelector('.rail-icon').innerHTML = state.muted ? '&#128277;' : '&#128276;';
-      events.emit('mute:changed', state.muted);
-    });
-  }
+  // Mute toggle is handled by notification-settings.js
 
   // Stats button
   const statsBtn = document.getElementById('stats-btn');
@@ -62,7 +54,8 @@ function updatePanelVisibility(activePanel) {
   const panels = {
     sessions: 'sessions-panel',
     explorer: 'explorer-panel',
-    plugins: 'plugins-panel'
+    plugins: 'plugins-panel',
+    openviking: 'openviking-panel'
   };
 
   for (const [key, id] of Object.entries(panels)) {

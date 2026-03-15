@@ -53,7 +53,12 @@ contextBridge.exposeInMainWorld('api', {
   plugins: {
     detect: () => ipcRenderer.invoke('plugins:detect'),
     toggle: (pluginId, enabled) => ipcRenderer.invoke('plugins:toggle', pluginId, enabled),
-    upload: (opts) => ipcRenderer.invoke('plugins:upload', opts)
+    upload: (opts) => ipcRenderer.invoke('plugins:upload', opts),
+    onChanged: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on('plugins:changed', handler);
+      return () => ipcRenderer.removeListener('plugins:changed', handler);
+    }
   },
 
   // ── File System ──────────────────────────────────────────
@@ -147,5 +152,29 @@ contextBridge.exposeInMainWorld('api', {
   appState: {
     get: (key) => ipcRenderer.invoke('appState:get', key),
     set: (key, value) => ipcRenderer.invoke('appState:set', key, value)
+  },
+
+  // ── OpenViking Context Database ─────────────────────────
+  openviking: {
+    start: () => ipcRenderer.invoke('openviking:start'),
+    stop: () => ipcRenderer.invoke('openviking:stop'),
+    status: () => ipcRenderer.invoke('openviking:status'),
+    onServerReady: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('openviking:serverReady', handler);
+      return () => ipcRenderer.removeListener('openviking:serverReady', handler);
+    },
+    search: (query, options) => ipcRenderer.invoke('openviking:search', query, options),
+    ls: (uri) => ipcRenderer.invoke('openviking:ls', uri),
+    tree: (uri, depth) => ipcRenderer.invoke('openviking:tree', uri, depth),
+    read: (uri, tier) => ipcRenderer.invoke('openviking:read', uri, tier),
+    addResource: (source, options) => ipcRenderer.invoke('openviking:addResource', source, options),
+    listMemories: (agentId, category) => ipcRenderer.invoke('openviking:listMemories', agentId, category),
+    searchMemories: (query, agentId) => ipcRenderer.invoke('openviking:searchMemories', query, agentId),
+    extractMemory: (sessionId, content) => ipcRenderer.invoke('openviking:extractMemory', sessionId, content),
+    ingestAll: () => ipcRenderer.invoke('openviking:ingestAll'),
+    ingestHytaleRefs: () => ipcRenderer.invoke('openviking:ingestHytaleRefs'),
+    ingestCodex: (codexPath) => ipcRenderer.invoke('openviking:ingestCodex', codexPath),
+    ingestTranscript: (sessionId, content, meta) => ipcRenderer.invoke('openviking:ingestTranscript', sessionId, content, meta)
   }
 });

@@ -102,8 +102,6 @@ async function checkAuth(silent = false) {
       }
     }
   }
-
-  events.emit('auth:statusChanged', authState);
 }
 
 async function launchLoginSession() {

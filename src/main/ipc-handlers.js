@@ -77,6 +77,29 @@ function registerIpcHandlers(ipcMain) {
           win.webContents.send('pty:exit', { id: opts.id, exitCode });
         }
         try { transcriber.endSession(opts.id); } catch(e) { /* ignore */ }
+
+        // Auto-ingest transcript into OpenViking on session end
+        try {
+          const transcriptPath = transcriber.getTranscriptPath(opts.id);
+          if (fs.existsSync(transcriptPath)) {
+            const content = fs.readFileSync(transcriptPath, 'utf-8');
+            if (content.length > 100) {
+              const ovIngest = require('./openviking/ov-ingest');
+              ovIngest.ingestSingleTranscript(opts.id, content, {
+                name: opts.name || opts.id,
+                workspacePath: opts.cwd,
+                mode: opts.mode
+              }).then(r => {
+                console.log('[Main:pty:exit] Auto-ingested transcript for', opts.id, r.success ? 'OK' : 'FAIL');
+              }).catch(e => {
+                console.log('[Main:pty:exit] Auto-ingest skipped:', e.message);
+              });
+            }
+          }
+        } catch (ingestErr) {
+          // Non-fatal — OpenViking may not be running
+          console.log('[Main:pty:exit] Auto-ingest skipped (non-fatal):', ingestErr.message);
+        }
       };
 
       session.spawn();
@@ -503,6 +526,7 @@ function registerIpcHandlers(ipcMain) {
 
   ipcMain.handle('plugins:detect', () => {
     const results = { mcpServers: {}, plugins: [], settings: {}, installedPlugins: {} };
+    const seenPluginPaths = new Set();
 
     // Read MCP servers from global config
     try {
@@ -517,6 +541,37 @@ function registerIpcHandlers(ipcMain) {
         results.settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
       }
     } catch (e) { /* skip */ }
+
+    // Helper: read plugin manifest from a plugin directory
+    function readPluginManifest(pluginDir) {
+      // Check .claude-plugin/plugin.json first (standard location)
+      const manifestPaths = [
+        path.join(pluginDir, '.claude-plugin', 'plugin.json'),
+        path.join(pluginDir, 'plugin.json'),
+        path.join(pluginDir, 'package.json')
+      ];
+      for (const mp of manifestPaths) {
+        try {
+          if (fs.existsSync(mp)) {
+            return JSON.parse(fs.readFileSync(mp, 'utf-8'));
+          }
+        } catch (e) { /* skip */ }
+      }
+      return null;
+    }
+
+    // Helper: detect what a plugin directory contains
+    function detectPluginContents(pluginDir) {
+      const contents = [];
+      try {
+        const items = fs.readdirSync(pluginDir);
+        if (items.includes('skills')) contents.push('skills');
+        if (items.includes('commands')) contents.push('commands');
+        if (items.includes('hooks')) contents.push('hooks');
+        if (items.includes('agents')) contents.push('agents');
+      } catch (e) { /* skip */ }
+      return contents;
+    }
 
     // Read installed_plugins.json (official Claude plugin registry)
     const installedPath = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
@@ -533,31 +588,121 @@ function registerIpcHandlers(ipcMain) {
           const pluginName = nameParts[0] || pluginId;
           const source = nameParts[1] || 'unknown';
 
-          // Try to read plugin.json from install path for description
           let description = '';
+          let version = entry.version || '';
           let pluginType = 'plugin';
           if (entry.installPath) {
-            try {
-              const pjPath = path.join(entry.installPath, 'plugin.json');
-              if (fs.existsSync(pjPath)) {
-                const pj = JSON.parse(fs.readFileSync(pjPath, 'utf-8'));
-                description = pj.description || '';
-                pluginType = pj.type || 'plugin';
-              }
-            } catch (e) { /* skip */ }
+            seenPluginPaths.add(path.resolve(entry.installPath));
+            const manifest = readPluginManifest(entry.installPath);
+            if (manifest) {
+              description = manifest.description || '';
+              pluginType = manifest.type || 'plugin';
+              if (manifest.version && !version) version = manifest.version;
+              if (!version && manifest.version) version = manifest.version;
+            }
+            const contents = detectPluginContents(entry.installPath);
+            if (contents.length > 0 && !description) {
+              description = `Contains: ${contents.join(', ')}`;
+            }
           }
 
           results.plugins.push({
             id: pluginId,
             name: pluginName,
-            description: description,
-            source: source,
+            description,
+            source,
             path: entry.installPath || '',
             type: pluginType,
-            version: entry.version || '',
-            enabled: enabled,
+            version,
+            enabled,
             installedAt: entry.installedAt || '',
             lastUpdated: entry.lastUpdated || ''
+          });
+        }
+      }
+    } catch (e) { /* skip */ }
+
+    // Scan ~/.claude/plugins/ for local plugin directories not in registry
+    const pluginsDir = path.join(os.homedir(), '.claude', 'plugins');
+    try {
+      if (fs.existsSync(pluginsDir)) {
+        const items = fs.readdirSync(pluginsDir, { withFileTypes: true });
+        for (const item of items) {
+          if (!item.isDirectory()) continue;
+          // Skip internal dirs
+          if (['cache', '.install-manifests', 'marketplaces'].includes(item.name)) continue;
+
+          const itemPath = path.resolve(path.join(pluginsDir, item.name));
+          if (seenPluginPaths.has(itemPath)) continue;
+
+          // Check if it looks like a plugin (has .claude-plugin/, skills/, commands/, or hooks/)
+          const hasPluginMarker = fs.existsSync(path.join(itemPath, '.claude-plugin'));
+          const hasSkills = fs.existsSync(path.join(itemPath, 'skills'));
+          const hasCommands = fs.existsSync(path.join(itemPath, 'commands'));
+          const hasHooks = fs.existsSync(path.join(itemPath, 'hooks'));
+
+          if (hasPluginMarker || hasSkills || hasCommands || hasHooks) {
+            const manifest = readPluginManifest(itemPath);
+            const pluginName = manifest?.name || item.name;
+            const localId = `${pluginName}@local`;
+            const enabled = results.settings?.enabledPlugins?.[localId] === true;
+            const contents = detectPluginContents(itemPath);
+
+            results.plugins.push({
+              id: localId,
+              name: pluginName,
+              description: manifest?.description || (contents.length > 0 ? `Contains: ${contents.join(', ')}` : 'Local plugin'),
+              source: 'local',
+              path: itemPath,
+              type: manifest?.type || 'plugin',
+              version: manifest?.version || '',
+              enabled,
+              installedAt: '',
+              lastUpdated: ''
+            });
+            seenPluginPaths.add(itemPath);
+          }
+        }
+      }
+    } catch (e) { /* skip */ }
+
+    // Scan cache for available plugins not in registry
+    const cacheDir = path.join(pluginsDir, 'cache', 'claude-plugins-official');
+    try {
+      if (fs.existsSync(cacheDir)) {
+        const cachedPlugins = fs.readdirSync(cacheDir, { withFileTypes: true });
+        for (const item of cachedPlugins) {
+          if (!item.isDirectory()) continue;
+          const pluginId = `${item.name}@claude-plugins-official`;
+          // Skip if already in registry
+          if (results.plugins.some(p => p.id === pluginId)) continue;
+
+          const itemPath = path.join(cacheDir, item.name);
+          // Find the version directory (first subdir)
+          let versionDir = itemPath;
+          try {
+            const subdirs = fs.readdirSync(itemPath, { withFileTypes: true }).filter(d => d.isDirectory());
+            if (subdirs.length > 0) {
+              versionDir = path.join(itemPath, subdirs[0].name);
+            }
+          } catch (e) { /* use itemPath */ }
+
+          const manifest = readPluginManifest(versionDir);
+          const contents = detectPluginContents(versionDir);
+          const enabled = results.settings?.enabledPlugins?.[pluginId] === true;
+
+          results.plugins.push({
+            id: pluginId,
+            name: item.name,
+            description: manifest?.description || (contents.length > 0 ? `Contains: ${contents.join(', ')}` : 'Cached plugin'),
+            source: 'claude-plugins-official',
+            path: versionDir,
+            type: 'plugin',
+            version: manifest?.version || '',
+            enabled,
+            installedAt: '',
+            lastUpdated: '',
+            cached: true
           });
         }
       }
@@ -647,6 +792,41 @@ function registerIpcHandlers(ipcMain) {
     }
     return { success: true, results };
   });
+
+  // ── Plugin File Watcher — push changes to renderer ──────
+
+  const pluginWatchPaths = [
+    path.join(os.homedir(), '.claude', 'plugins'),
+    path.join(os.homedir(), '.claude', 'settings.json'),
+    path.join(os.homedir(), '.claude', '.mcp.json'),
+    path.join(os.homedir(), '.claude.json')
+  ];
+  const watchers = [];
+  let watchDebounce = null;
+
+  function notifyPluginChange() {
+    if (watchDebounce) clearTimeout(watchDebounce);
+    watchDebounce = setTimeout(() => {
+      const win = getMainWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('plugins:changed');
+      }
+    }, 1500); // Debounce 1.5s to avoid rapid-fire on bulk changes
+  }
+
+  for (const watchPath of pluginWatchPaths) {
+    try {
+      if (fs.existsSync(watchPath)) {
+        const isDir = fs.statSync(watchPath).isDirectory();
+        const watcher = fs.watch(watchPath, { recursive: isDir }, () => {
+          notifyPluginChange();
+        });
+        watchers.push(watcher);
+      }
+    } catch (e) {
+      // Some paths may not exist yet — that's OK
+    }
+  }
 
   // ── Group Coordination ─────────────────────────────────
 
@@ -751,11 +931,151 @@ function registerIpcHandlers(ipcMain) {
     db.appState.set(key, value);
     return { success: true };
   });
+
+  // ── OpenViking Context Database ─────────────────────────
+
+  const ovServer = require('./openviking/ov-server');
+  const ovClient = require('./openviking/ov-client');
+  const ovIngest = require('./openviking/ov-ingest');
+
+  // Start/stop OpenViking server
+  ipcMain.handle('openviking:start', async () => {
+    try {
+      const started = await ovServer.startServer();
+      return { success: started };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('openviking:stop', () => {
+    ovServer.stopServer();
+    return { success: true };
+  });
+
+  ipcMain.handle('openviking:status', async () => {
+    const status = ovServer.getStatus();
+    if (status.running) {
+      try {
+        const stats = await ovClient.stats();
+        return { ...status, ...stats };
+      } catch {
+        return status;
+      }
+    }
+    return status;
+  });
+
+  // Search
+  ipcMain.handle('openviking:search', async (event, query, options = {}) => {
+    try {
+      return await ovClient.search(query, options);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  // List / browse context filesystem
+  ipcMain.handle('openviking:ls', async (event, uri) => {
+    try {
+      return await ovClient.ls(uri);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('openviking:tree', async (event, uri, depth) => {
+    try {
+      return await ovClient.tree(uri, depth);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  // Read a resource at a specific tier
+  ipcMain.handle('openviking:read', async (event, uri, tier) => {
+    try {
+      return await ovClient.read(uri, tier);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  // Add a resource
+  ipcMain.handle('openviking:addResource', async (event, source, options) => {
+    try {
+      return await ovClient.addResource(source, options);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  // Memory operations
+  ipcMain.handle('openviking:listMemories', async (event, agentId, category) => {
+    try {
+      return await ovClient.listMemories(agentId, category);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('openviking:searchMemories', async (event, query, agentId) => {
+    try {
+      return await ovClient.searchMemories(query, agentId);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('openviking:extractMemory', async (event, sessionId, content) => {
+    try {
+      return await ovClient.extractMemory(sessionId, content);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  // Ingestion operations
+  ipcMain.handle('openviking:ingestAll', async () => {
+    try {
+      return await ovIngest.ingestAll();
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('openviking:ingestHytaleRefs', async () => {
+    try {
+      return await ovIngest.ingestHytaleReferences();
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('openviking:ingestCodex', async (event, codexPath) => {
+    try {
+      return await ovIngest.ingestCodex(codexPath);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('openviking:ingestTranscript', async (event, sessionId, content, meta) => {
+    try {
+      return await ovIngest.ingestSingleTranscript(sessionId, content, meta);
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
 }
 
 function cleanup() {
   transcriber.closeAll();
   mcpManager.stopAll();
+  try {
+    const ovServer = require('./openviking/ov-server');
+    ovServer.stopServer();
+  } catch (e) { /* ignore */ }
   db.close();
 }
 

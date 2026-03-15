@@ -21,8 +21,10 @@ export function renderSessionList() {
     item.className = `session-item${id === state.activeSessionId ? ' active' : ''}`;
     item.dataset.sessionId = id;
 
+    const isStopped = session.status === 'stopped' || session.status === 'idle';
     const statusClass = session.status === 'active' ? 'active' :
-                        session.status === 'waiting' ? 'waiting' : '';
+                        session.status === 'waiting' ? 'waiting' :
+                        isStopped ? 'stopped' : '';
     const modeClass = session.mode || 'ask';
 
     let groupDot = '';
@@ -33,14 +35,24 @@ export function renderSessionList() {
       }
     }
 
+    // Make draggable for group drag-drop
+    item.draggable = true;
+    item.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/session-id', id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    const previewText = isStopped ? (session.workspacePath || 'Click to resume') :
+                        (session.lastMessage || session.workspacePath || '');
+
     item.innerHTML = `
       <span class="session-status-dot ${statusClass}"></span>
       <div class="session-info">
-        <div class="session-name">${escapeHtml(session.name)}</div>
-        <div class="session-preview">${escapeHtml(session.lastMessage || session.workspacePath || '')}</div>
+        <div class="session-name${isStopped ? ' stopped-name' : ''}">${escapeHtml(session.name)}</div>
+        <div class="session-preview">${escapeHtml(previewText)}</div>
       </div>
       <div class="session-badges">
-        <span class="mode-badge ${modeClass}">${(session.mode || 'ASK').toUpperCase()}</span>
+        ${isStopped ? '<span class="mode-badge stopped">STOPPED</span>' : `<span class="mode-badge ${modeClass}">${(session.mode || 'ASK').toUpperCase()}</span>`}
         ${session.skipPerms ? '<span class="skip-badge">&#9889;</span>' : ''}
         ${groupDot}
       </div>

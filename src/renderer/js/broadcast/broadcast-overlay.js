@@ -80,7 +80,10 @@ function renderTargets() {
     sessions = Array.from(state.sessions.values());
   }
 
-  for (const session of sessions) {
+  // Filter out stopped/idle sessions — can't write to dead PTYs
+  const activeSessions = sessions.filter(s => s.status !== 'stopped' && s.status !== 'idle');
+
+  for (const session of activeSessions) {
     const label = document.createElement('label');
     label.className = 'broadcast-target';
     label.innerHTML = `
@@ -88,6 +91,15 @@ function renderTargets() {
       <span>${escapeHtml(session.name)}</span>
     `;
     container.appendChild(label);
+  }
+
+  // Show hint if some sessions were filtered
+  const stoppedCount = sessions.length - activeSessions.length;
+  if (stoppedCount > 0) {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:var(--font-size-xs);color:var(--cream-faint);padding:4px 0;';
+    hint.textContent = `${stoppedCount} stopped session(s) hidden`;
+    container.appendChild(hint);
   }
 }
 

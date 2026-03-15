@@ -90,6 +90,9 @@ export class TerminalPane {
 
     this.sessionId = sessionId;
 
+    // Store sessionId on DOM element for diff-viewer and other features
+    this.containerEl.dataset.sessionId = sessionId;
+
     // Listen for PTY data for this session
     let dataCount = 0;
     this.cleanupPtyData = window.api.pty.onData((id, data) => {
@@ -129,6 +132,7 @@ export class TerminalPane {
       this.cleanupPtyExit = null;
     }
     this.sessionId = null;
+    delete this.containerEl.dataset.sessionId;
   }
 
   sendInput(text) {
@@ -331,10 +335,91 @@ export class TerminalPane {
       });
     }
 
+    // Journal button — show transcript viewer
+    const journalBtn = this.containerEl.querySelector('.journal-btn');
+    if (journalBtn) {
+      journalBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!this.sessionId) return;
+
+        // Toggle: if already open, close it
+        const existing = this.containerEl.querySelector('.journal-overlay');
+        if (existing) {
+          existing.remove();
+          return;
+        }
+
+        await this._showJournal();
+      });
+    }
+
     // Focus on click
     this.containerEl.addEventListener('mousedown', () => {
       events.emit('pane:requestFocus', this.paneIndex);
     });
+  }
+
+  /** Show journal/transcript overlay for the current session */
+  async _showJournal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'journal-overlay';
+    overlay.innerHTML = `
+      <div class="journal-header">
+        <span>Session Journal</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select class="journal-date-select"></select>
+          <button class="btn btn-secondary journal-close-btn" style="padding:2px 8px;font-size:var(--font-size-xs)">Close</button>
+        </div>
+      </div>
+      <div class="journal-content">
+        <div class="journal-output">Loading transcripts...</div>
+      </div>
+    `;
+
+    overlay.querySelector('.journal-close-btn').addEventListener('click', () => overlay.remove());
+
+    const dateSelect = overlay.querySelector('.journal-date-select');
+    const outputEl = overlay.querySelector('.journal-output');
+
+    this.containerEl.appendChild(overlay);
+
+    try {
+      const transcripts = await window.api.transcript.list(this.sessionId);
+
+      if (!transcripts || transcripts.length === 0) {
+        outputEl.textContent = 'No transcripts found for this session.';
+        return;
+      }
+
+      // Populate date selector
+      for (const filename of transcripts) {
+        const date = filename.replace('.md', '');
+        const opt = document.createElement('option');
+        opt.value = date;
+        opt.textContent = date;
+        dateSelect.appendChild(opt);
+      }
+
+      // Load first (most recent) transcript
+      const loadTranscript = async (date) => {
+        outputEl.textContent = 'Loading...';
+        try {
+          const result = await window.api.transcript.read(this.sessionId, date);
+          if (result.error) {
+            outputEl.textContent = 'Error: ' + result.error;
+          } else {
+            outputEl.textContent = result.content || 'Empty transcript.';
+          }
+        } catch (err) {
+          outputEl.textContent = 'Error loading transcript: ' + err.message;
+        }
+      };
+
+      dateSelect.addEventListener('change', () => loadTranscript(dateSelect.value));
+      await loadTranscript(transcripts[0].replace('.md', ''));
+    } catch (err) {
+      outputEl.textContent = 'Error: ' + err.message;
+    }
   }
 
   /** Set up drag-and-drop file attachments on the terminal pane */

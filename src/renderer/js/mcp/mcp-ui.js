@@ -7,6 +7,9 @@ import { showToast } from '../notifications/toast.js';
 let detectedPlugins = [];
 let pluginData = null;
 
+// Track which sections are collapsed (persisted across renders)
+const collapsedSections = new Set();
+
 export function initMcpUI() {
   renderPluginsList();
 
@@ -23,6 +26,15 @@ export function initMcpUI() {
   loadInitialStatus();
   detectPlugins();
 
+  // Live file watching — auto-refresh when plugins/MCP configs change on disk
+  window.api.plugins.onChanged(() => {
+    console.log('[MCP-UI] Plugin/MCP files changed on disk, refreshing...');
+    detectPlugins();
+  });
+
+  // Periodic refresh every 30s as backup
+  setInterval(detectPlugins, 30000);
+
   events.on('session:added', () => renderPluginsList());
   events.on('session:removed', () => renderPluginsList());
 }
@@ -38,15 +50,17 @@ function updateMcpDot(status) {
   const dot = document.getElementById('mcp-global-dot');
   if (!dot) return;
   let allConnected = true, anyRunning = false;
+  let toolCount = 0;
   const statusObj = typeof status === 'object' ? status : {};
   for (const info of Object.values(statusObj)) {
     anyRunning = true;
     if (info.status !== 'connected') allConnected = false;
+    if (info.tools) toolCount += info.tools.length;
   }
-  dot.style.background = !anyRunning ? 'var(--charcoal-light)' :
-                          allConnected ? 'var(--green)' : 'var(--yellow)';
-  dot.title = !anyRunning ? 'No MCP servers' :
-              allConnected ? 'All MCP servers connected' : 'Some MCP servers not connected';
+  dot.style.background = !anyRunning ? '#555' :
+                          allConnected ? '#6ec76e' : '#d4845a';
+  dot.title = !anyRunning ? 'MCP: No servers' :
+              allConnected ? `MCP: Connected (${toolCount} tools)` : 'MCP: Some servers not connected';
 }
 
 async function detectPlugins() {
@@ -69,7 +83,6 @@ async function togglePlugin(pluginId, currentlyEnabled) {
         message: newState ? 'Plugin will be active in new sessions.' : 'Plugin will be inactive in new sessions.',
         icon: newState ? '&#9989;' : '&#10060;'
       });
-      // Refresh detection
       await detectPlugins();
     } else {
       showToast({ title: 'Error: ' + result.error, icon: '&#9888;' });
@@ -109,13 +122,47 @@ async function showUploadDialog() {
           icon: '&#9888;'
         });
       }
-      // Refresh
       await detectPlugins();
     }
   } catch (e) {
     showToast({ title: 'Upload failed: ' + e.message, icon: '&#9888;' });
   }
 }
+
+// ── Collapsible section helper ───────────────────────────
+
+function createCollapsibleSection(container, sectionId, label, count, marginTop) {
+  const isCollapsed = collapsedSections.has(sectionId);
+
+  const header = document.createElement('div');
+  header.className = 'plugin-section-header collapsible';
+  if (marginTop) header.style.marginTop = marginTop;
+  header.innerHTML = `
+    <span class="section-collapse-icon">${isCollapsed ? '&#9654;' : '&#9660;'}</span>
+    <span style="flex:1">${label} (${count})</span>
+  `;
+
+  const body = document.createElement('div');
+  body.className = 'plugin-section-body';
+  if (isCollapsed) body.classList.add('collapsed');
+
+  header.addEventListener('click', () => {
+    const nowCollapsed = body.classList.toggle('collapsed');
+    const icon = header.querySelector('.section-collapse-icon');
+    icon.innerHTML = nowCollapsed ? '&#9654;' : '&#9660;';
+    if (nowCollapsed) {
+      collapsedSections.add(sectionId);
+    } else {
+      collapsedSections.delete(sectionId);
+    }
+  });
+
+  container.appendChild(header);
+  container.appendChild(body);
+  return body;
+}
+
+// ── Render ───────────────────────────────────────────────
 
 async function renderPluginsList() {
   const container = document.getElementById('plugins-list');
@@ -129,57 +176,31 @@ async function renderPluginsList() {
 
     container.innerHTML = '';
 
-    // ── Section: Installed Plugins ────────────────────────
-    const installedPlugins = detectedPlugins.filter(p => p.id && !p.id.startsWith('command:'));
-    if (installedPlugins.length > 0) {
-      const header = document.createElement('div');
-      header.className = 'plugin-section-header';
-      header.innerHTML = `<span>Installed Plugins (${installedPlugins.length})</span>`;
-      container.appendChild(header);
-
-      for (const plugin of installedPlugins) {
-        const item = document.createElement('div');
-        item.className = 'plugin-item' + (plugin.enabled ? ' enabled' : '');
-        const sourceLabel = plugin.source === 'claude-plugins-official' ? 'Official' :
-                            plugin.source === 'local-desktop-app-uploads' ? 'Local' : plugin.source;
-
-        item.innerHTML = `
-          <div class="plugin-item-header">
-            <span class="plugin-dot" style="background:${plugin.enabled ? 'var(--green)' : 'var(--cream-faint)'}"></span>
-            <span class="plugin-name" style="flex:1">${escapeHtml(plugin.name)}</span>
-            <button class="plugin-on-off-btn ${plugin.enabled ? 'is-on' : 'is-off'}" data-plugin-id="${escapeHtml(plugin.id)}" data-enabled="${plugin.enabled ? 'true' : 'false'}" title="${plugin.enabled ? 'Click to disable' : 'Click to enable'}">
-              ${plugin.enabled ? 'ON' : 'OFF'}
-            </button>
-          </div>
-          <div class="plugin-meta">
-            <span class="plugin-source">${escapeHtml(sourceLabel)}</span>
-            ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
-          </div>
-          ${plugin.description ? `<div class="plugin-desc">${escapeHtml(plugin.description)}</div>` : ''}
-        `;
-        container.appendChild(item);
+    // ── Section: Enabled Plugins ──────────────────────────
+    const enabledPlugins = detectedPlugins.filter(p => p.id && !p.id.startsWith('command:') && p.enabled);
+    if (enabledPlugins.length > 0) {
+      const body = createCollapsibleSection(container, 'enabled-plugins', 'Enabled Plugins', enabledPlugins.length);
+      for (const plugin of enabledPlugins) {
+        body.appendChild(createPluginItem(plugin));
       }
+      wireToggleButtons(body);
+    }
 
-      // Wire toggle buttons
-      container.querySelectorAll('.plugin-on-off-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const pluginId = btn.dataset.pluginId;
-          const isEnabled = btn.dataset.enabled === 'true';
-          togglePlugin(pluginId, isEnabled);
-        });
-      });
+    // ── Section: Available / Disabled Plugins ─────────────
+    const disabledPlugins = detectedPlugins.filter(p => p.id && !p.id.startsWith('command:') && !p.enabled);
+    if (disabledPlugins.length > 0) {
+      const body = createCollapsibleSection(container, 'available-plugins', 'Available Plugins', disabledPlugins.length, enabledPlugins.length > 0 ? '8px' : '0');
+      for (const plugin of disabledPlugins) {
+        body.appendChild(createPluginItem(plugin));
+      }
+      wireToggleButtons(body);
     }
 
     // ── Section: Custom Commands ──────────────────────────
     const commands = detectedPlugins.filter(p => p.id && p.id.startsWith('command:'));
     if (commands.length > 0) {
-      const header = document.createElement('div');
-      header.className = 'plugin-section-header';
-      header.style.marginTop = installedPlugins.length > 0 ? '12px' : '0';
-      header.innerHTML = `<span>Custom Commands (${commands.length})</span>`;
-      container.appendChild(header);
-
+      const prevSections = enabledPlugins.length > 0 || disabledPlugins.length > 0;
+      const body = createCollapsibleSection(container, 'custom-commands', 'Custom Commands', commands.length, prevSections ? '8px' : '0');
       for (const cmd of commands) {
         const item = document.createElement('div');
         item.className = 'plugin-item';
@@ -189,26 +210,28 @@ async function renderPluginsList() {
             <span class="plugin-name" style="flex:1">${escapeHtml(cmd.name)}</span>
           </div>
         `;
-        container.appendChild(item);
+        body.appendChild(item);
       }
     }
 
     // ── Section: MCP Servers ─────────────────────────────
     if (serverNames.length > 0) {
-      const header = document.createElement('div');
-      header.className = 'plugin-section-header';
-      header.style.marginTop = (installedPlugins.length > 0 || commands.length > 0) ? '12px' : '0';
-      header.innerHTML = `<span>MCP Servers (${serverNames.length})</span>`;
-      container.appendChild(header);
+      const prevSections = enabledPlugins.length + disabledPlugins.length + commands.length > 0;
+      const body = createCollapsibleSection(container, 'mcp-servers', 'MCP Servers', serverNames.length, prevSections ? '8px' : '0');
 
       for (const name of serverNames) {
         const serverStatus = status[name] || {};
         const isConnected = serverStatus.status === 'connected';
         const dotColor = isConnected ? 'var(--green)' :
-                         serverStatus.status === 'starting' ? 'var(--yellow)' : 'var(--charcoal-light)';
+                         serverStatus.status === 'starting' ? 'var(--yellow)' : 'var(--cream-faint)';
 
         const item = document.createElement('div');
         item.className = 'plugin-item';
+
+        // Show the command used for this MCP server
+        const serverConf = servers[name] || {};
+        const cmdLabel = serverConf.command || '';
+
         item.innerHTML = `
           <div class="plugin-item-header">
             <span class="plugin-dot" style="background:${dotColor}"></span>
@@ -217,11 +240,12 @@ async function renderPluginsList() {
               ${isConnected ? '&#9632;' : '&#9654;'}
             </button>
           </div>
+          ${cmdLabel ? `<div class="plugin-meta"><span class="plugin-source">${escapeHtml(cmdLabel)}</span></div>` : ''}
         `;
-        container.appendChild(item);
+        body.appendChild(item);
       }
 
-      container.querySelectorAll('.plugin-toggle-btn').forEach(btn => {
+      body.querySelectorAll('.plugin-toggle-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const serverName = btn.dataset.server;
@@ -239,8 +263,8 @@ async function renderPluginsList() {
               }
             }
             renderPluginsList();
-          } catch (e) {
-            showToast({ title: `Error: ${e.message}`, icon: '&#9888;' });
+          } catch (err) {
+            showToast({ title: `Error: ${err.message}`, icon: '&#9888;' });
           }
         });
       });
@@ -258,9 +282,60 @@ async function renderPluginsList() {
         </div>
       `;
     }
+
+    // ── Refresh button at the bottom ─────────────────────
+    const refreshRow = document.createElement('div');
+    refreshRow.className = 'plugin-refresh-row';
+    refreshRow.innerHTML = `<button class="plugin-refresh-btn" title="Refresh plugins & MCP">&#8635; Refresh</button>`;
+    refreshRow.querySelector('.plugin-refresh-btn').addEventListener('click', () => {
+      showToast({ title: 'Refreshing plugins...', icon: '&#8635;' });
+      detectPlugins();
+    });
+    container.appendChild(refreshRow);
+
   } catch (e) {
     container.innerHTML = `<div style="padding:12px;color:var(--red);font-size:var(--font-size-sm)">${e.message}</div>`;
   }
+}
+
+function createPluginItem(plugin) {
+  const item = document.createElement('div');
+  item.className = 'plugin-item' + (plugin.enabled ? ' enabled' : '');
+  const sourceLabel = plugin.source === 'claude-plugins-official' ? 'Official' :
+                      plugin.source === 'local-desktop-app-uploads' ? 'Local Upload' :
+                      plugin.source === 'local' ? 'Local' : plugin.source;
+
+  // Truncate long descriptions
+  let desc = plugin.description || '';
+  if (desc.length > 120) desc = desc.slice(0, 117) + '...';
+
+  item.innerHTML = `
+    <div class="plugin-item-header">
+      <span class="plugin-dot" style="background:${plugin.enabled ? 'var(--green)' : 'var(--cream-faint)'}"></span>
+      <span class="plugin-name" style="flex:1">${escapeHtml(plugin.name)}</span>
+      <button class="plugin-on-off-btn ${plugin.enabled ? 'is-on' : 'is-off'}" data-plugin-id="${escapeHtml(plugin.id)}" data-enabled="${plugin.enabled ? 'true' : 'false'}" title="${plugin.enabled ? 'Click to disable' : 'Click to enable'}">
+        ${plugin.enabled ? 'ON' : 'OFF'}
+      </button>
+    </div>
+    <div class="plugin-meta">
+      <span class="plugin-source">${escapeHtml(sourceLabel)}</span>
+      ${plugin.version ? `<span class="plugin-version">v${escapeHtml(plugin.version)}</span>` : ''}
+      ${plugin.cached ? '<span class="plugin-version">cached</span>' : ''}
+    </div>
+    ${desc ? `<div class="plugin-desc">${escapeHtml(desc)}</div>` : ''}
+  `;
+  return item;
+}
+
+function wireToggleButtons(container) {
+  container.querySelectorAll('.plugin-on-off-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pluginId = btn.dataset.pluginId;
+      const isEnabled = btn.dataset.enabled === 'true';
+      togglePlugin(pluginId, isEnabled);
+    });
+  });
 }
 
 function escapeHtml(str) {

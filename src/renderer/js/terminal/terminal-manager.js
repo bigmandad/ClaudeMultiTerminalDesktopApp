@@ -75,6 +75,7 @@ class TerminalManagerClass {
             <input type="checkbox" class="skip-perms-check">
             <span class="skip-perms-label">SKIP PERMS</span>
           </label>
+          <button class="pane-btn knowledge-btn" title="Search Knowledge Base">&#128270;</button>
           <button class="pane-btn relay-btn" title="Relay to group">&#8594;</button>
           <button class="pane-btn journal-btn" title="Journal">&#128203;</button>
           <button class="pane-btn diff-btn" title="Diff stats"></button>

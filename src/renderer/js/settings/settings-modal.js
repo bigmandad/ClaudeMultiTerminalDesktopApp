@@ -1,6 +1,5 @@
 // ── Settings Modal ───────────────────────────────────────
 
-import { state } from '../state.js';
 import { showToast } from '../notifications/toast.js';
 
 let remoteApiRunning = false;
@@ -49,12 +48,4 @@ export async function toggleRemoteApi() {
 
 export function isRemoteApiRunning() {
   return remoteApiRunning;
-}
-
-export function showSettings() {
-  showToast({
-    title: 'Settings',
-    message: 'Configure sessions via the session form. MCP servers via ~/.claude.json.',
-    icon: '&#9881;'
-  });
 }

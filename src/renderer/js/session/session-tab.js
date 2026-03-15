@@ -24,14 +24,16 @@ export function renderTabs() {
     tab.className = `tab${id === state.activeSessionId ? ' active' : ''}`;
     tab.dataset.sessionId = id;
 
+    const isStopped = session.status === 'stopped' || session.status === 'idle';
     const statusClass = session.status === 'active' ? 'active' :
-                        session.status === 'waiting' ? 'waiting' : '';
+                        session.status === 'waiting' ? 'waiting' :
+                        isStopped ? 'stopped' : '';
     const modeClass = session.mode || 'ask';
 
     tab.innerHTML = `
       <span class="tab-dot session-status-dot ${statusClass}"></span>
-      <span class="tab-name">${escapeHtml(session.name)}</span>
-      <span class="mode-badge ${modeClass}">${(session.mode || 'ASK').toUpperCase()}</span>
+      <span class="tab-name${isStopped ? ' stopped-name' : ''}">${escapeHtml(session.name)}</span>
+      ${isStopped ? '<span class="mode-badge stopped">STOPPED</span>' : `<span class="mode-badge ${modeClass}">${(session.mode || 'ASK').toUpperCase()}</span>`}
       ${session.skipPerms ? '<span class="skip-badge">&#9889;</span>' : ''}
       <button class="tab-close" title="Close">&times;</button>
     `;
