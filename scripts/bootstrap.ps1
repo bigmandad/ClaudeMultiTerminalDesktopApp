@@ -74,11 +74,15 @@ function Clone-Repo($Repo, $Dest) {
     }
 }
 
+$ModShop = "$Workspace\HYTALEMODWORKSHOP"
+New-Item -ItemType Directory -Path $ModShop -Force | Out-Null
+
 Clone-Repo "ClaudeMultiTerminalDesktopApp" "$Projects\ClaudeMultiTerminalDesktopApp"
 Clone-Repo "claude-plugins-custom"         $Plugins
 Clone-Repo "KingdomsMod"                   "$Projects\KingdomsMod"
+Clone-Repo "CorruptionModSourceCode"       "$ModShop\CorruptionMod"
+Clone-Repo "CorruptionModDeployment"       "$ModShop\CorruptionModDeployment"
 Clone-Repo "HytaleModdingPluginRefinementWorkspace" "$Projects\HytaleModdingPluginRefinementWorkspace"
-Clone-Repo "MoneyBot"                      "$Projects\MoneyBot"
 
 # ── 4. npm install ────────────────────────────────────────
 Write-Host ""

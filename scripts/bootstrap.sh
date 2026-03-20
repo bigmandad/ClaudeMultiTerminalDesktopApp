@@ -102,11 +102,15 @@ clone_repo() {
   fi
 }
 
+MODSHOP="$WORKSPACE/HYTALEMODWORKSHOP"
+mkdir -p "$MODSHOP"
+
 clone_repo "ClaudeMultiTerminalDesktopApp" "$PROJECTS/ClaudeMultiTerminalDesktopApp"
 clone_repo "claude-plugins-custom"         "$PLUGINS"
 clone_repo "KingdomsMod"                   "$PROJECTS/KingdomsMod"
+clone_repo "CorruptionModSourceCode"       "$MODSHOP/CorruptionMod"
+clone_repo "CorruptionModDeployment"       "$MODSHOP/CorruptionModDeployment"
 clone_repo "HytaleModdingPluginRefinementWorkspace" "$PROJECTS/HytaleModdingPluginRefinementWorkspace"
-clone_repo "MoneyBot"                      "$PROJECTS/MoneyBot"
 
 # ── 6. npm install ────────────────────────────────────────
 echo ""
