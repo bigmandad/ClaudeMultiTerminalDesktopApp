@@ -204,7 +204,7 @@ async function searchMemories(query, agentId = 'claude-sessions') {
  * Get server health status.
  */
 async function health() {
-  return request('GET', '/health');
+  return request('GET', '/api/v1/debug/health');
 }
 
 /**

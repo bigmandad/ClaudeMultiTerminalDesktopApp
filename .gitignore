@@ -1,8 +1,45 @@
+# Dependencies
 node_modules/
+package-lock.json
+
+# Build output
 dist/
 out/
-*.log
+build/
+*.exe
+!*.exe.blockmap
+
+# Native module build artifacts
+build/Release/
+prebuilds/
+
+# Electron
+.electron/
+
+# Environment / secrets
 .env
+.env.local
+.env.*.local
+
+# OS files
 .DS_Store
 Thumbs.db
-nul
+Desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Windows launcher files
+start.bat
+start.vbs
+*.lnk
+
+# Claude Sessions runtime data (per-machine)
+.claude-sessions/

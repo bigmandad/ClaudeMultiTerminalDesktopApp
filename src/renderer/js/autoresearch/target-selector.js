@@ -59,7 +59,8 @@ export function renderTargetSelector(targets, activeResearch, selectedTargetId) 
           <div class="ar-target-actions">
             ${isActive
               ? `<button class="btn ar-stop-btn" data-target-id="${id}" style="padding:1px 6px;font-size:9px">Stop</button>`
-              : `<button class="btn btn-primary ar-start-btn" data-target-id="${id}" style="padding:1px 6px;font-size:9px">Start Research</button>`
+              : `<button class="btn btn-primary ar-start-btn" data-target-id="${id}" style="padding:1px 6px;font-size:9px">Start</button>
+                 <button class="btn ar-start-btn ar-headless-btn" data-target-id="${id}" data-mode="headless" style="padding:1px 6px;font-size:9px" title="Headless mode: uses claude -p (faster, no terminal UI)">Headless</button>`
             }
           </div>
         </div>`;

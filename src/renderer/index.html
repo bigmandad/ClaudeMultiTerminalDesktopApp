@@ -7,7 +7,7 @@
   <title>Claude Sessions</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles/main.css">
   <link rel="stylesheet" href="styles/layout.css">
   <link rel="stylesheet" href="styles/terminal.css">
@@ -36,6 +36,9 @@
         </button>
         <button class="rail-btn" id="autoresearch-rail-btn" data-panel="autoresearch" title="AutoResearch">
           <span class="rail-icon">&#128300;</span>
+        </button>
+        <button class="rail-btn" id="activity-rail-btn" data-panel="activity" title="Activity Log — Research experiments, hooks, and tool usage">
+          <span class="rail-icon">&#128220;</span>
         </button>
         <div class="rail-divider"></div>
         <button class="rail-btn layout-btn active" data-layout="single" title="Single Pane">
@@ -68,6 +71,9 @@
         <button class="rail-btn" id="remote-api-btn" title="Toggle Remote API (Google Chat)">
           <span class="rail-icon">&#127760;</span>
         </button>
+        <button class="rail-btn" id="discord-bot-btn" title="Toggle Discord Bot">
+          <span class="rail-icon">&#128172;</span>
+        </button>
         <button class="rail-btn" id="mute-btn" title="Toggle Sound">
           <span class="rail-icon">&#128276;</span>
         </button>
@@ -77,17 +83,29 @@
         </div>
         <!-- Unified System Status -->
         <div class="system-status-strip" id="system-status-strip">
-          <div class="sys-dot" id="mcp-global-dot" title="MCP: Checking..." data-system="mcp">
+          <div class="sys-dot" id="mcp-global-dot" data-system="mcp">
             <span class="sys-dot-icon">M</span>
+            <span class="sys-dot-tooltip" id="mcp-tooltip">MCP: Checking...</span>
           </div>
-          <div class="sys-dot" id="openviking-status-dot" title="OpenViking: Checking..." data-system="ov">
+          <div class="sys-dot" id="openviking-status-dot" data-system="ov">
             <span class="sys-dot-icon">V</span>
+            <span class="sys-dot-tooltip" id="ov-tooltip">OpenViking: Checking...</span>
           </div>
-          <div class="sys-dot" id="ollama-status-dot" title="Ollama: Checking..." data-system="ollama">
+          <div class="sys-dot" id="ollama-status-dot" data-system="ollama">
             <span class="sys-dot-icon">O</span>
+            <span class="sys-dot-tooltip" id="ollama-tooltip">Ollama: Checking...</span>
           </div>
-          <div class="sys-dot" id="research-status-dot" title="Research: Idle" data-system="research">
+          <div class="sys-dot" id="research-status-dot" data-system="research">
             <span class="sys-dot-icon">R</span>
+            <span class="sys-dot-tooltip" id="research-tooltip">AutoResearch: Idle</span>
+          </div>
+          <div class="sys-dot" id="discord-status-dot" data-system="discord">
+            <span class="sys-dot-icon">C</span>
+            <span class="sys-dot-tooltip" id="discord-tooltip">Discord: Not connected</span>
+          </div>
+          <div class="sys-dot" id="db-status-dot" data-system="db">
+            <span class="sys-dot-icon">D</span>
+            <span class="sys-dot-tooltip" id="db-tooltip">Database: Checking...</span>
           </div>
         </div>
       </div>
@@ -143,6 +161,20 @@
           <button class="ar-tab" data-ar-tab="insights">Insights</button>
         </div>
         <div id="ar-content" class="ar-content"></div>
+      </div>
+
+      <!-- Activity Panel -->
+      <div class="panel-content hidden" id="activity-panel">
+        <div class="panel-header">
+          <span>ACTIVITY LOG</span>
+        </div>
+        <div class="act-tabs">
+          <button class="act-tab active" data-act-tab="research">Research</button>
+          <button class="act-tab" data-act-tab="hooks">Hooks</button>
+          <button class="act-tab" data-act-tab="blackboard">Blackboard</button>
+          <button class="act-tab" data-act-tab="stats">Stats</button>
+        </div>
+        <div id="act-content" class="act-content"></div>
       </div>
 
       <!-- OpenViking Panel -->
@@ -216,10 +248,10 @@
           <div class="pane-input-bar">
             <button class="input-btn attach-btn" title="Add Reference">+</button>
             <div class="attachment-pills"></div>
-            <input type="text" class="pane-input" placeholder="Type a message...">
+            <textarea class="pane-input" placeholder="Type a message..." rows="1"></textarea>
             <button class="input-btn plugin-btn" title="Plugins">&#10033;</button>
             <button class="input-btn mic-btn" title="Speech to Text">&#127908;</button>
-            <button class="input-btn send-btn" title="Send (Ctrl+Enter)">&#10148;</button>
+            <button class="input-btn send-btn" title="Send (Enter)">&#10148;</button>
           </div>
         </div>
       </div>

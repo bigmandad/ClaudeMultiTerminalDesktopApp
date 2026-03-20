@@ -40,6 +40,7 @@ class PtySession {
     this.process.onExit(({ exitCode }) => {
       console.log('[PtySession] process exited, id:', this.id, 'code:', exitCode);
       if (this.onExitCallback) this.onExitCallback(exitCode);
+      this.process = null; // Mark as dead so write() and isAlive checks work
     });
 
     // After shell is ready, send the claude command
@@ -73,12 +74,63 @@ class PtySession {
       args.push('--mcp-config', `"${this.options.mcpConfig}"`);
     }
 
-    if (this.options.resume) {
+    // Session resume: --resume <specificId> or --continue (most recent)
+    if (this.options.resumeSessionId) {
+      args.push('--resume', this.options.resumeSessionId);
+    } else if (this.options.resume) {
       args.push('--continue');
     }
 
     if (this.options.systemPrompt) {
-      args.push('--append-system-prompt', `"${this.options.systemPrompt.replace(/"/g, '\\"')}"`);
+      // Collapse newlines → spaces to avoid breaking PowerShell command parsing.
+      // Multi-line strings split across PTY write chunks cause PS to interpret
+      // each line as a separate statement, producing "Missing expression" errors.
+      const safePrompt = this.options.systemPrompt
+        .replace(/\r?\n/g, ' ')   // newlines → spaces
+        .replace(/\s{2,}/g, ' ')   // collapse multiple spaces
+        .replace(/"/g, '\\"')      // escape inner quotes
+        .trim();
+      args.push('--append-system-prompt', `"${safePrompt}"`);
+    }
+
+    // Session display name (--name)
+    if (this.options.name) {
+      args.push('--name', `"${this.options.name.replace(/"/g, '\\"')}"`);
+    }
+
+    // Max turns limit for cost/runaway protection
+    if (this.options.maxTurns) {
+      args.push('--max-turns', String(this.options.maxTurns));
+    }
+
+    // Granular tool permissions (safer than --dangerously-skip-permissions)
+    if (this.options.allowedTools && Array.isArray(this.options.allowedTools)) {
+      for (const tool of this.options.allowedTools) {
+        args.push('--allowedTools', `"${tool}"`);
+      }
+    }
+
+    if (this.options.disallowedTools && Array.isArray(this.options.disallowedTools)) {
+      for (const tool of this.options.disallowedTools) {
+        args.push('--disallowedTools', `"${tool}"`);
+      }
+    }
+
+    // Tool restriction (--tools for whitelisting available tools)
+    if (this.options.tools && Array.isArray(this.options.tools)) {
+      for (const tool of this.options.tools) {
+        args.push('--tools', `"${tool}"`);
+      }
+    }
+
+    // MCP debug output
+    if (this.options.mcpDebug) {
+      args.push('--mcp-debug');
+    }
+
+    // Verbose output for debugging
+    if (this.options.verbose) {
+      args.push('--verbose');
     }
 
     return args.join(' ');

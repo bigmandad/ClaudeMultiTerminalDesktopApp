@@ -1,7 +1,30 @@
 const { Menu, app } = require('electron');
 
 function createMenu(mainWindow) {
+  const isMac = process.platform === 'darwin';
+
   const template = [
+    // macOS app menu (required — first menu becomes the app name menu)
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Settings',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => mainWindow?.webContents.send('menu:settings')
+        },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
     {
       label: 'File',
       submenu: [
@@ -16,13 +39,14 @@ function createMenu(mainWindow) {
           click: () => mainWindow?.webContents.send('menu:closeSession')
         },
         { type: 'separator' },
-        {
+        // Settings lives in app menu on macOS, in File on Windows/Linux
+        ...(!isMac ? [{
           label: 'Settings',
           accelerator: 'CmdOrCtrl+,',
           click: () => mainWindow?.webContents.send('menu:settings')
         },
-        { type: 'separator' },
-        { role: 'quit' }
+        { type: 'separator' }] : []),
+        isMac ? { role: 'close' } : { role: 'quit' }
       ]
     },
     {
@@ -71,13 +95,23 @@ function createMenu(mainWindow) {
         { role: 'togglefullscreen' }
       ]
     },
+    // macOS Window menu (standard — provides Minimize, Zoom, Front)
+    ...(isMac ? [{
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        { role: 'front' }
+      ]
+    }] : []),
     {
       label: 'Help',
       submenu: [
-        {
+        ...(!isMac ? [{
           label: 'About Claude Sessions',
           click: () => mainWindow?.webContents.send('menu:about')
-        }
+        }] : [])
       ]
     }
   ];

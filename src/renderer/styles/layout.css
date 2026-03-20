@@ -25,11 +25,19 @@
   -webkit-app-region: no-drag;
 }
 
-.rail-top, .rail-bottom {
+.rail-top {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
+}
+
+.rail-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 4px;
 }
 
 .rail-btn {

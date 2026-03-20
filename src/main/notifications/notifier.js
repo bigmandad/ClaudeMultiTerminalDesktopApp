@@ -55,6 +55,45 @@ class Notifier {
       url || 'Repository created successfully.'
     );
   }
+
+  // ── AutoResearch notifications ───────────────────────────
+
+  researchStarted(targetId) {
+    this.showNative(
+      'Research Started',
+      `AutoResearch is now running on "${targetId}".`
+    );
+  }
+
+  researchStopped(targetId, reason) {
+    this.showNative(
+      'Research Stopped',
+      reason
+        ? `Research on "${targetId}" stopped: ${reason}`
+        : `Research on "${targetId}" has been stopped.`
+    );
+  }
+
+  researchNewBest(targetId, metricName, metricValue, experimentNum) {
+    this.showNative(
+      `New Best: ${metricValue.toFixed(3)}`,
+      `Experiment #${experimentNum} on "${targetId}" set a new best for ${metricName}.`
+    );
+  }
+
+  researchAutoStopped(targetId, reason) {
+    this.showNative(
+      'Research Auto-Stopped',
+      `"${targetId}" stopped automatically: ${reason}`
+    );
+  }
+
+  researchExperimentFailed(targetId, experimentNum, description) {
+    this.showNative(
+      `Experiment #${experimentNum} Failed`,
+      `Research on "${targetId}": ${description || 'Experiment crashed.'}`
+    );
+  }
 }
 
 module.exports = { Notifier };

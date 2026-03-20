@@ -2,7 +2,7 @@
 
 import { state } from '../state.js';
 import { events } from '../events.js';
-import { toggleRemoteApi, isRemoteApiRunning } from '../settings/settings-modal.js';
+import { toggleRemoteApi, isRemoteApiRunning, toggleDiscordBot, isDiscordBotConnected, showDiscordTokenPopover } from '../settings/settings-modal.js';
 
 export function initIconRail() {
   const panelBtns = document.querySelectorAll('.rail-btn[data-panel]');
@@ -13,6 +13,7 @@ export function initIconRail() {
       state.setLeftPanel(panel);
       updatePanelButtons(panel);
       updatePanelVisibility(panel);
+      events.emit('panel:shown', panel);
     });
   });
 
@@ -42,6 +43,29 @@ export function initIconRail() {
       } catch (e) { /* ignore */ }
     }, 2000);
   }
+
+  // Discord Bot toggle
+  const discordBtn = document.getElementById('discord-bot-btn');
+  if (discordBtn) {
+    discordBtn.addEventListener('click', async () => {
+      // If no token configured, show the token popover
+      const tokenInfo = await window.api.discord.getToken();
+      if (!tokenInfo.exists && !isDiscordBotConnected()) {
+        showDiscordTokenPopover(discordBtn);
+        return;
+      }
+      await toggleDiscordBot();
+      discordBtn.classList.toggle('active', isDiscordBotConnected());
+    });
+
+    // Check initial state
+    setTimeout(async () => {
+      try {
+        const status = await window.api.discord.status();
+        discordBtn.classList.toggle('active', status.connected);
+      } catch (e) { /* ignore */ }
+    }, 2000);
+  }
 }
 
 function updatePanelButtons(activePanel) {
@@ -56,7 +80,8 @@ function updatePanelVisibility(activePanel) {
     explorer: 'explorer-panel',
     plugins: 'plugins-panel',
     openviking: 'openviking-panel',
-    autoresearch: 'autoresearch-panel'
+    autoresearch: 'autoresearch-panel',
+    activity: 'activity-panel'
   };
 
   for (const [key, id] of Object.entries(panels)) {

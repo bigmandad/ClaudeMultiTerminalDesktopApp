@@ -7,7 +7,16 @@ const path = require('path');
 const os = require('os');
 const ovClient = require('./ov-client');
 
-const HYTALE_PLUGIN_DIR = path.join(os.homedir(), '.claude', 'plugins', 'hytale-modding');
+// Search for hytale-modding plugin in user-level and common workspace locations
+function findHytalePluginDir() {
+  const candidates = [
+    path.join(os.homedir(), '.claude', 'plugins', 'hytale-modding'),
+    path.join(os.homedir(), 'Documents', 'ClaudeWorkspace', '.claude', 'plugins', 'hytale-modding'),
+    process.env.HYTALE_PLUGIN_DIR,
+  ].filter(Boolean);
+  return candidates.find(p => fs.existsSync(path.join(p, '.claude-plugin', 'plugin.json')) || fs.existsSync(path.join(p, 'skills'))) || candidates[0];
+}
+const HYTALE_PLUGIN_DIR = findHytalePluginDir();
 const HYTALE_SKILLS_DIR = path.join(HYTALE_PLUGIN_DIR, 'skills');
 const TRANSCRIPTS_DIR = path.join(os.homedir(), '.claude-sessions', 'transcripts');
 const CLAUDE_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
@@ -58,11 +67,14 @@ async function ingestHytaleReferences() {
  */
 async function ingestCodex(codexPath) {
   if (!codexPath) {
-    // Try to find it in common locations
+    // Try to find it in common locations (env var, plugin dir, workspace, home)
+    const home = os.homedir();
     const candidates = [
-      path.join('D:', 'ClaudeProjects', 'KingdomsMod', 'HYTALE_CODEX.md'),
-      path.join('C:', 'Users', 'Majied', 'Documents', 'HYTALEMODWORKSHOP', 'CorruptionMod', 'HYTALE_CODEX.md'),
-    ];
+      process.env.HYTALE_CODEX_PATH,
+      path.join(home, '.claude', 'plugins', 'hytale-modding', 'HYTALE_CODEX.md'),
+      path.join(home, 'Documents', 'ClaudeWorkspace', 'HYTALEMODWORKSHOP', 'CorruptionMod', 'HYTALE_CODEX.md'),
+      path.join(home, 'Documents', 'ClaudeWorkspace', 'ClaudeProjects', 'KingdomsMod', 'HYTALE_CODEX.md'),
+    ].filter(Boolean);
     codexPath = candidates.find(p => fs.existsSync(p));
   }
 

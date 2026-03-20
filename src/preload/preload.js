@@ -16,6 +16,16 @@ contextBridge.exposeInMainWorld('api', {
       const handler = (_event, payload) => callback(payload.id, payload.exitCode);
       ipcRenderer.on('pty:exit', handler);
       return () => ipcRenderer.removeListener('pty:exit', handler);
+    },
+    onDiscordSessionRequested: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('discord:sessionRequested', handler);
+      return () => ipcRenderer.removeListener('discord:sessionRequested', handler);
+    },
+    onDiscordSessionEnded: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('discord:sessionEnded', handler);
+      return () => ipcRenderer.removeListener('discord:sessionEnded', handler);
     }
   },
 
@@ -127,7 +137,8 @@ contextBridge.exposeInMainWorld('api', {
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
-    checkClaudeAuth: () => ipcRenderer.invoke('app:checkClaudeAuth')
+    checkClaudeAuth: () => ipcRenderer.invoke('app:checkClaudeAuth'),
+    dbHealth: () => ipcRenderer.invoke('app:dbHealth')
   },
 
   clipboard: {
@@ -146,6 +157,21 @@ contextBridge.exposeInMainWorld('api', {
     start: (port) => ipcRenderer.invoke('remote:start', port),
     stop: () => ipcRenderer.invoke('remote:stop'),
     status: () => ipcRenderer.invoke('remote:status')
+  },
+
+  // ── Discord Bot ────────────────────────────────────────
+  discord: {
+    start: (token) => ipcRenderer.invoke('discord:start', token),
+    stop: () => ipcRenderer.invoke('discord:stop'),
+    status: () => ipcRenderer.invoke('discord:status'),
+    setToken: (token) => ipcRenderer.invoke('discord:setToken', token),
+    getToken: () => ipcRenderer.invoke('discord:getToken'),
+    bindings: () => ipcRenderer.invoke('discord:bindings'),
+    onStatusChanged: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('discord:statusChanged', handler);
+      return () => ipcRenderer.removeListener('discord:statusChanged', handler);
+    }
   },
 
   // ── App State ────────────────────────────────────────────
@@ -168,6 +194,7 @@ contextBridge.exposeInMainWorld('api', {
     bestMetrics: (targetId) => ipcRenderer.invoke('research:bestMetrics', targetId),
     recentExperiments: (limit) => ipcRenderer.invoke('research:recentExperiments', limit),
     stats: (targetId) => ipcRenderer.invoke('research:stats', targetId),
+    tsvTimeline: (targetId) => ipcRenderer.invoke('research:tsvTimeline', targetId),
     dbTargets: () => ipcRenderer.invoke('research:dbTargets'),
     deleteTarget: (targetId) => ipcRenderer.invoke('research:deleteTarget', targetId),
     onStatusChanged: (callback) => {
@@ -204,5 +231,61 @@ contextBridge.exposeInMainWorld('api', {
     ingestHytaleRefs: () => ipcRenderer.invoke('openviking:ingestHytaleRefs'),
     ingestCodex: (codexPath) => ipcRenderer.invoke('openviking:ingestCodex', codexPath),
     ingestTranscript: (sessionId, content, meta) => ipcRenderer.invoke('openviking:ingestTranscript', sessionId, content, meta)
+  },
+
+  // ── Blackboard (cross-session shared state) ─────────────
+  blackboard: {
+    set: (sessionId, key, value, category, ttl) => ipcRenderer.invoke('blackboard:set', sessionId, key, value, category, ttl),
+    get: (key) => ipcRenderer.invoke('blackboard:get', key),
+    list: (category) => ipcRenderer.invoke('blackboard:list', category),
+    delete: (key) => ipcRenderer.invoke('blackboard:delete', key),
+    clear: (sessionId) => ipcRenderer.invoke('blackboard:clear', sessionId),
+    onUpdated: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('blackboard:updated', handler);
+      return () => ipcRenderer.removeListener('blackboard:updated', handler);
+    }
+  },
+
+  // ── Setup Wizard ────────────────────────────────────────
+  setup: {
+    isComplete: () => ipcRenderer.invoke('setup:isComplete'),
+    checkDeps: () => ipcRenderer.invoke('setup:checkDeps'),
+    installDep: (name, command) => ipcRenderer.invoke('setup:installDep', { name, command }),
+    configure: (opts) => ipcRenderer.invoke('setup:configure', opts),
+    pullModel: (model) => ipcRenderer.invoke('setup:pullModel', { model }),
+    markComplete: () => ipcRenderer.invoke('setup:markComplete'),
+    getMachineId: () => ipcRenderer.invoke('setup:getMachineId'),
+    detectHytalePath: () => ipcRenderer.invoke('setup:detectHytalePath'),
+    onInstallProgress: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('setup:installProgress', handler);
+      return () => ipcRenderer.removeListener('setup:installProgress', handler);
+    },
+    onModelProgress: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('setup:modelProgress', handler);
+      return () => ipcRenderer.removeListener('setup:modelProgress', handler);
+    }
+  },
+
+  // ── Plugin Sync (cross-machine plugin synchronisation) ──
+  pluginSync: {
+    getInstalled: () => ipcRenderer.invoke('pluginSync:getInstalled'),
+    getMissing: () => ipcRenderer.invoke('pluginSync:getMissing'),
+    pushManifest: () => ipcRenderer.invoke('pluginSync:pushManifest'),
+    syncAll: () => ipcRenderer.invoke('pluginSync:syncAll'),
+  },
+
+  // ── Hook Events (Claude Code lifecycle) ──────────────────
+  hooks: {
+    recent: (limit) => ipcRenderer.invoke('hooks:recent', limit),
+    bySession: (sessionId, limit) => ipcRenderer.invoke('hooks:bySession', sessionId, limit),
+    stats: () => ipcRenderer.invoke('hooks:stats'),
+    onEvent: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('hooks:event', handler);
+      return () => ipcRenderer.removeListener('hooks:event', handler);
+    }
   }
 });

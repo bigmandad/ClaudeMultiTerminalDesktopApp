@@ -7,8 +7,55 @@ const os = require('os');
 const http = require('http');
 const fs = require('fs');
 
+const { execSync } = require('child_process');
+
+/**
+ * Resolve the Ollama binary path cross-platform.
+ */
+function resolveOllamaPath() {
+  if (process.platform === 'win32') {
+    return path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Ollama', 'ollama.exe');
+  }
+  const candidates = process.platform === 'darwin'
+    ? ['/opt/homebrew/bin/ollama', '/usr/local/bin/ollama']
+    : ['/usr/local/bin/ollama'];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  try {
+    return execSync('which ollama', { encoding: 'utf8', timeout: 3000 }).trim();
+  } catch (_) { /* not found */ }
+  return 'ollama';
+}
+
+/**
+ * Resolve the openviking-server binary path cross-platform.
+ */
+function resolveOvServerCmd() {
+  if (process.platform === 'win32') {
+    const pythonVersions = ['Python312', 'Python311', 'Python310', 'Python313'];
+    for (const ver of pythonVersions) {
+      const candidate = path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', ver, 'Scripts', 'openviking-server.exe');
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  } else {
+    const candidates = [
+      path.join(os.homedir(), '.local', 'bin', 'openviking-server'),
+      '/opt/homebrew/bin/openviking-server',
+      '/usr/local/bin/openviking-server'
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+    try {
+      return execSync('which openviking-server', { encoding: 'utf8', timeout: 3000 }).trim();
+    } catch (_) { /* not found */ }
+  }
+  return 'openviking-server';
+}
+
 const OV_PORT = 1933;
-const OV_HEALTH_URL = `http://localhost:${OV_PORT}/health`;
+const OV_HEALTH_URL = `http://localhost:${OV_PORT}/api/v1/debug/health`;
 const OV_CONFIG = path.join(os.homedir(), '.openviking', 'ov.conf');
 const OV_DATA = path.join(os.homedir(), '.openviking', 'data');
 
@@ -46,7 +93,7 @@ async function startServer() {
 
     // Ensure Ollama is running (needed for embeddings)
     try {
-      const ollamaPath = path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Ollama', 'ollama.exe');
+      const ollamaPath = resolveOllamaPath();
       const ollamaRunning = await new Promise(resolve => {
         const req = http.get('http://localhost:11434/api/version', { timeout: 2000 }, () => resolve(true));
         req.on('error', () => resolve(false));
@@ -66,8 +113,7 @@ async function startServer() {
 
     // Spawn the server process
     // Use the openviking-server CLI command (installed by pip)
-    const ovServerCmd = path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'Scripts', 'openviking-server.exe');
-    const cmd = fs.existsSync(ovServerCmd) ? ovServerCmd : 'openviking-server';
+    const cmd = resolveOvServerCmd();
     serverProcess = spawn(cmd, ['--port', String(OV_PORT), '--config', OV_CONFIG], {
       env: {
         ...process.env,

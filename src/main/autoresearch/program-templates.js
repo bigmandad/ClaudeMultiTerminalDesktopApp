@@ -1,4 +1,6 @@
 // ── Program Templates — dynamic program.md for research agents ──
+// Incorporates: Evolution-DNA learning model (OBSERVE→REMEMBER→ITERATE→GENERATE)
+// Incorporates: Two-stage verification, severity-based priorities, TDD discipline
 
 /**
  * Generate a program.md for the research agent based on target type.
@@ -17,6 +19,45 @@ function generate(targetProfile, pastContext = '') {
     default:
       return genericTemplate(targetProfile, pastContext);
   }
+}
+
+// Shared section: Evolution-DNA learning model adapted for autoresearch
+function learningModel() {
+  return `
+## Learning Model (OBSERVE → REMEMBER → ITERATE → GENERATE)
+
+Apply this adaptive learning cycle across experiments:
+
+### OBSERVE (every experiment)
+- What approach did you try? What was the result?
+- Did the metric improve, decline, or stay flat? Why?
+- What unexpected side-effects occurred?
+
+### REMEMBER (accumulate patterns)
+- If a technique worked 2+ times → it's a **pattern** (note it in your description)
+- If a technique failed 2+ times → it's an **anti-pattern** (avoid repeating)
+- Track which file areas have the most improvement potential vs. diminishing returns
+
+### ITERATE (refine approach)
+- Each experiment should build on learnings from previous ones
+- If metric is plateauing, switch to a different metric or strategy
+- If you're stuck: try the OPPOSITE approach of your last 3 experiments
+
+### GENERATE (create reusable knowledge)
+- After 5+ experiments, summarize your top findings in the description field
+- Note any cross-cutting patterns that apply beyond this specific target
+`;
+}
+
+// Shared section: verification discipline
+function verificationRules() {
+  return `
+## Verification Discipline
+- **Two-stage check**: First verify spec compliance (does it match intent?), then code quality (is it well-built?)
+- **No "it should work" claims** — verify by reading the changed file back after editing
+- **Severity priority**: If you find a critical bug, fix it immediately before continuing experiments
+- **Honest self-assessment**: Rate yourself conservatively. 0.9+ should be reserved for genuinely excellent changes
+`;
 }
 
 function pluginTemplate(target, pastContext) {
@@ -47,13 +88,14 @@ Autonomously improve this Claude plugin. Each experiment should make ONE focused
 3. After modifying, verify no syntax errors or broken markdown
 4. Self-assess the quality metric (be honest and conservative)
 5. Report results in the exact format below
-
+${verificationRules()}
 ## Experiment Loop
 1. Read the current state of all editable files
 2. Identify ONE specific, high-impact improvement
 3. Make the change (edit the file)
-4. Self-assess: rate the relevant metric 0.0 to 1.0
-5. Report results:
+4. **Verify**: re-read the file to confirm the edit is correct
+5. Self-assess: rate the relevant metric 0.0 to 1.0
+6. Report results:
 \`\`\`
 ---
 metric_name: skill_clarity
@@ -62,19 +104,20 @@ status: keep
 description: Simplified trigger description for hytale-plugin-api skill to avoid false positives
 ---
 \`\`\`
-6. If the change improves quality (your honest assessment): git commit with descriptive message
-7. If not improved or broke something: git checkout -- . (revert all changes)
-8. **NEVER STOP.** Continue to the next experiment immediately.
+7. If the change improves quality (your honest assessment): git commit with descriptive message
+8. If not improved or broke something: git checkout -- . (revert all changes)
+9. **NEVER STOP.** Continue to the next experiment immediately.
 
 ## Strategy Guidelines
 - Start by reading ALL editable files to understand the full plugin
 - Prioritize changes with highest impact-to-complexity ratio
 - Remove redundant or verbose instructions before adding new content
-- Ensure skill trigger descriptions are specific (avoid over-firing)
+- Ensure skill trigger descriptions start with "Use when..." (Claude Search Optimization)
 - Look for inconsistencies between related skills
 - Check that examples match actual API patterns
 - Consolidate duplicate information across skills
-
+- For trigger descriptions: describe triggering conditions ONLY, not the workflow
+${learningModel()}
 ${pastContext ? `## Past Experiments (from knowledge base)\n${pastContext}` : ''}
 `;
 }
@@ -101,15 +144,16 @@ Autonomously improve this MCP server. Metrics:
 ## Rules
 1. ONLY modify files listed under "Editable files"
 2. Each experiment: make ONE focused change
-3. Test changes by verifying the code is syntactically valid
+3. Test changes by verifying the code is syntactically valid (run \`node --check <file>\` if JS)
 4. Self-assess the quality metric honestly
-
+${verificationRules()}
 ## Experiment Loop
 1. Read all source files
 2. Identify ONE specific improvement
 3. Make the change
-4. Self-assess the relevant metric
-5. Report:
+4. **Verify**: re-read the changed file, check for syntax errors
+5. Self-assess the relevant metric
+6. Report:
 \`\`\`
 ---
 metric_name: error_handling
@@ -118,9 +162,9 @@ status: keep
 description: Added input validation to search tool for empty queries
 ---
 \`\`\`
-6. Keep or discard based on quality assessment
-7. **NEVER STOP.** Continue immediately.
-
+7. Keep or discard based on quality assessment
+8. **NEVER STOP.** Continue immediately.
+${learningModel()}
 ${pastContext ? `## Past Experiments\n${pastContext}` : ''}
 `;
 }
@@ -147,11 +191,17 @@ Autonomously improve this Claude custom command/skill. Metrics:
 3. Maintain the overall structure and intent
 4. Self-assess honestly
 
+## Claude Search Optimization (CSO)
+Skill descriptions MUST start with "Use when..." and describe ONLY triggering conditions (not the workflow).
+Bad: "This skill helps you create new plugins by walking through a wizard..."
+Good: "Use when the user wants to create, scaffold, or initialize a new plugin project."
+${verificationRules()}
 ## Experiment Loop
 1. Read the skill file completely
 2. Identify ONE improvement opportunity
 3. Make the change
-4. Self-assess:
+4. **Verify**: re-read the file to confirm correctness
+5. Self-assess:
 \`\`\`
 ---
 metric_name: instruction_clarity
@@ -160,8 +210,8 @@ status: keep
 description: Replaced ambiguous step 3 with specific actionable instruction
 ---
 \`\`\`
-5. Keep or discard
-6. **NEVER STOP.**
+6. Keep or discard
+7. **NEVER STOP.**
 
 ## Strategy
 - Read the entire skill first before making any changes
@@ -170,7 +220,8 @@ description: Replaced ambiguous step 3 with specific actionable instruction
 - Use imperative voice ("Do X" not "You should do X")
 - Ensure examples match the instruction format
 - Check for contradictions between different sections
-
+- Apply CSO: optimize the description for accurate triggering
+${learningModel()}
 ${pastContext ? `## Past Experiments\n${pastContext}` : ''}
 `;
 }
@@ -201,8 +252,9 @@ description: what you changed
 - ONE change per experiment
 - Self-assess honestly (0.0-1.0)
 - Git commit if improved, revert if not
+- **Verify** every change by re-reading the modified file
 - **NEVER STOP**
-
+${learningModel()}
 ${pastContext ? `## Past Experiments\n${pastContext}` : ''}
 `;
 }

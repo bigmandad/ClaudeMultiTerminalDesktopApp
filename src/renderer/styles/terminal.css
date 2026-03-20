@@ -214,7 +214,7 @@
 
 .pane-input-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 4px;
   padding: 4px 8px;
   background: var(--bg-panel);
@@ -265,6 +265,12 @@
   padding: 4px 8px;
   outline: none;
   transition: border-color var(--transition);
+  resize: none;
+  min-height: 26px;
+  max-height: 120px;
+  overflow-y: auto;
+  line-height: 1.4;
+  field-sizing: content;
 }
 
 .pane-input:focus {
@@ -394,4 +400,66 @@
 
 .spark-bar:hover {
   background: var(--cream);
+}
+
+/* ── Terminal Search Bar (Ctrl+F) ────────────────────── */
+
+.term-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.term-search-input {
+  flex: 1;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  padding: 3px 8px;
+  outline: none;
+  min-width: 0;
+}
+
+.term-search-input:focus {
+  border-color: var(--orange);
+}
+
+.term-search-count {
+  font-size: var(--font-size-xs);
+  color: var(--cream-faint);
+  flex-shrink: 0;
+  min-width: 40px;
+  text-align: center;
+}
+
+.term-search-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--cream-faint);
+  font-size: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.term-search-btn:hover {
+  background: var(--bg-hover);
+  color: var(--cream);
+}
+
+.term-search-close:hover {
+  color: var(--red);
 }

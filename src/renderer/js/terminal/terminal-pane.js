@@ -3,6 +3,8 @@
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { WebglAddon } from '@xterm/addon-webgl';
+import { SearchAddon } from '@xterm/addon-search';
 import { terminalTheme } from './terminal-theme.js';
 import { state } from '../state.js';
 import { events } from '../events.js';
@@ -17,6 +19,8 @@ export class TerminalPane {
     this.sessionId = null;
     this.terminal = null;
     this.fitAddon = null;
+    this.searchAddon = null;
+    this.searchBarEl = null;
     this.cleanupPtyData = null;
     this.cleanupPtyExit = null;
     this.resizeObserver = null;
@@ -25,6 +29,7 @@ export class TerminalPane {
     this._setupInput();
     this._setupPaneControls();
     this._setupDragDrop();
+    this._setupSearch();
   }
 
   init(compact = false) {
@@ -34,7 +39,7 @@ export class TerminalPane {
     try {
       this.terminal = new Terminal({
         theme: terminalTheme,
-        fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace",
+        fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', monospace",
         fontSize: compact ? 11 : 13,
         lineHeight: 1.2,
         cursorStyle: 'bar',
@@ -51,9 +56,27 @@ export class TerminalPane {
         window.api.shell.openExternal(uri);
       }));
 
+      // Search addon (Ctrl+F to search terminal output)
+      this.searchAddon = new SearchAddon();
+      this.terminal.loadAddon(this.searchAddon);
+
       this.terminal.open(this.terminalContainer);
       console.log('[TerminalPane] terminal opened in container, container size:',
         this.terminalContainer.offsetWidth + 'x' + this.terminalContainer.offsetHeight);
+
+      // Try WebGL renderer for up to 900% faster rendering (with canvas fallback)
+      try {
+        const webglAddon = new WebglAddon();
+        webglAddon.onContextLoss(() => {
+          console.warn('[TerminalPane] WebGL context lost, falling back to canvas');
+          webglAddon.dispose();
+        });
+        this.terminal.loadAddon(webglAddon);
+        console.log('[TerminalPane] WebGL renderer loaded');
+      } catch (webglErr) {
+        console.warn('[TerminalPane] WebGL not available, using default renderer:', webglErr.message);
+      }
+
       this.fitAddon.fit();
       console.log('[TerminalPane] terminal fit: cols=' + this.terminal.cols + ' rows=' + this.terminal.rows);
     } catch (err) {
@@ -153,7 +176,13 @@ export class TerminalPane {
         if (pillsContainer) pillsContainer.innerHTML = '';
       }
 
-      window.api.pty.write(this.sessionId, fullMessage + '\r');
+      // For multiline messages, use bracketed paste so the PTY receives it correctly
+      const isMultiline = fullMessage.includes('\n');
+      if (isMultiline) {
+        window.api.pty.write(this.sessionId, '\x1b[200~' + fullMessage + '\x1b[201~' + '\r');
+      } else {
+        window.api.pty.write(this.sessionId, fullMessage + '\r');
+      }
       // Also focus the terminal so user can see the response
       if (this.terminal) this.terminal.focus();
     }
@@ -252,20 +281,42 @@ export class TerminalPane {
   _setupInput() {
     if (!this.inputEl) return;
 
-    // Tab key prevention
+    // Auto-resize textarea as content changes
+    const autoResize = () => {
+      this.inputEl.style.height = 'auto';
+      const newHeight = Math.min(this.inputEl.scrollHeight, 120);
+      this.inputEl.style.height = newHeight + 'px';
+    };
+
+    // Reset textarea to single line
+    const resetInput = () => {
+      this.inputEl.value = '';
+      this.inputEl.style.height = '';
+    };
+
+    this.inputEl.addEventListener('input', autoResize);
+
+    // Tab key prevention + Enter/Shift+Enter handling
     this.inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Tab') {
         e.preventDefault();
         return;
       }
 
-      // Ctrl+Enter or Enter to send
-      if (e.key === 'Enter' && (e.ctrlKey || !e.shiftKey)) {
+      // Shift+Enter → insert newline (default textarea behavior, just allow it)
+      if (e.key === 'Enter' && e.shiftKey) {
+        // Let the default behavior add a newline
+        // Auto-resize will fire on the 'input' event
+        return;
+      }
+
+      // Enter or Ctrl+Enter → send message
+      if (e.key === 'Enter') {
         e.preventDefault();
         const text = this.inputEl.value;
         if (text.trim()) {
           this.sendInput(text);
-          this.inputEl.value = '';
+          resetInput();
         }
       }
     });
@@ -277,7 +328,7 @@ export class TerminalPane {
         const text = this.inputEl.value;
         if (text.trim()) {
           this.sendInput(text);
-          this.inputEl.value = '';
+          resetInput();
         }
       });
     }
@@ -420,6 +471,81 @@ export class TerminalPane {
     } catch (err) {
       outputEl.textContent = 'Error: ' + err.message;
     }
+  }
+
+  /** Set up Ctrl+F search bar for terminal output */
+  _setupSearch() {
+    // Listen for Ctrl+F globally (will be triggered when this pane has focus)
+    this.containerEl.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        e.stopPropagation();
+        this._showSearchBar();
+      }
+    });
+  }
+
+  _showSearchBar() {
+    // If already open, focus it
+    if (this.searchBarEl) {
+      const input = this.searchBarEl.querySelector('.term-search-input');
+      if (input) input.focus();
+      return;
+    }
+
+    const bar = document.createElement('div');
+    bar.className = 'term-search-bar';
+    bar.innerHTML = `
+      <input type="text" class="term-search-input" placeholder="Search terminal..." spellcheck="false">
+      <span class="term-search-count"></span>
+      <button class="term-search-btn term-search-prev" title="Previous (Shift+Enter)">&#9650;</button>
+      <button class="term-search-btn term-search-next" title="Next (Enter)">&#9660;</button>
+      <button class="term-search-btn term-search-close" title="Close (Escape)">&times;</button>
+    `;
+
+    // Insert at top of terminal container
+    this.terminalContainer.parentElement.insertBefore(bar, this.terminalContainer);
+    this.searchBarEl = bar;
+
+    const input = bar.querySelector('.term-search-input');
+    const countEl = bar.querySelector('.term-search-count');
+    const closeSearch = () => {
+      if (this.searchAddon) this.searchAddon.clearDecorations();
+      bar.remove();
+      this.searchBarEl = null;
+      if (this.terminal) this.terminal.focus();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeSearch();
+      } else if (e.key === 'Enter' && e.shiftKey) {
+        e.preventDefault();
+        if (this.searchAddon && input.value) this.searchAddon.findPrevious(input.value);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (this.searchAddon && input.value) this.searchAddon.findNext(input.value);
+      }
+    });
+
+    input.addEventListener('input', () => {
+      if (!this.searchAddon || !input.value) {
+        this.searchAddon?.clearDecorations();
+        countEl.textContent = '';
+        return;
+      }
+      this.searchAddon.findNext(input.value);
+    });
+
+    bar.querySelector('.term-search-prev').addEventListener('click', () => {
+      if (this.searchAddon && input.value) this.searchAddon.findPrevious(input.value);
+    });
+    bar.querySelector('.term-search-next').addEventListener('click', () => {
+      if (this.searchAddon && input.value) this.searchAddon.findNext(input.value);
+    });
+    bar.querySelector('.term-search-close').addEventListener('click', closeSearch);
+
+    input.focus();
   }
 
   /** Set up drag-and-drop file attachments on the terminal pane */

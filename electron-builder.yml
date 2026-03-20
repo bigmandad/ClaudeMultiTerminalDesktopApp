@@ -1,0 +1,73 @@
+appId: com.claudesessions.app
+productName: Claude Sessions
+copyright: Copyright © 2026
+
+directories:
+  output: dist
+  buildResources: assets
+
+files:
+  - "src/**/*"
+  - "dist/**/*"
+  - "assets/**/*"
+  - "package.json"
+  - "!**/*.map"
+  - "!**/node_modules/.cache/**"
+
+asarUnpack:
+  - "node_modules/@homebridge/node-pty-prebuilt-multiarch/**/*"
+  - "node_modules/better-sqlite3/**/*"
+  - "node_modules/@libsql/**/*"
+
+extraResources:
+  - from: assets/sounds
+    to: sounds
+
+win:
+  target:
+    - nsis
+    - portable
+  icon: assets/icon.ico
+  signAndEditExecutable: false
+  artifactName: "ClaudeSessions-Setup-${version}.${ext}"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  artifactName: "ClaudeSessions-Setup-${version}.${ext}"
+
+portable:
+  artifactName: "ClaudeSessions-Portable-${version}.${ext}"
+  requestExecutionLevel: user
+
+mac:
+  target:
+    - dmg
+  icon: assets/icon.icns
+  category: public.app-category.developer-tools
+  artifactName: "ClaudeSessions-${version}-${arch}.${ext}"
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+dmg:
+  artifactName: "ClaudeSessions-${version}-${arch}.${ext}"
+
+linux:
+  target:
+    - AppImage
+  icon: assets/icon.png
+  category: Development
+  artifactName: "ClaudeSessions-${version}.${ext}"
+
+publish:
+  provider: github
+  owner: bigmandad
+  repo: ClaudeMultiTerminalDesktopApp
+  releaseType: draft
+
+npmRebuild: false
+
+extraMetadata:
+  main: src/main/main.js

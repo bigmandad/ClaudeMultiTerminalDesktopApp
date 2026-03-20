@@ -28,12 +28,13 @@ async function quickLaunch() {
     });
 
     const paneIndex = findEmptyPane();
-    console.log('[QuickLaunch] target pane:', paneIndex);
+    const workspacePath = await getLastWorkspacePath();
+    console.log('[QuickLaunch] target pane:', paneIndex, 'workspace:', workspacePath || '(home)');
 
     console.log('[QuickLaunch] calling createSession...');
     const session = await createSession({
       name,
-      workspacePath: '',
+      workspacePath,
       mode: 'ask',
       skipPerms: false
     });
@@ -84,4 +85,31 @@ function getPaneCount() {
     case 'quad': return 4;
     default: return 1;
   }
+}
+
+/**
+ * Get the last used workspace path from:
+ * 1. Currently active sessions in memory
+ * 2. App memory state (persisted across restarts)
+ * 3. Falls back to empty string (home directory)
+ */
+async function getLastWorkspacePath() {
+  // Check active sessions first — most recent workspace wins
+  for (const session of state.sessions.values()) {
+    if (session.workspacePath) return session.workspacePath;
+  }
+
+  // Check app memory for previously saved sessions
+  try {
+    const memory = await window.api.appState.get('app_memory');
+    if (memory?.sessions?.length > 0) {
+      for (const s of memory.sessions) {
+        if (s.workspacePath) return s.workspacePath;
+      }
+    }
+  } catch (e) {
+    console.log('[QuickLaunch] could not read app memory:', e.message);
+  }
+
+  return '';
 }

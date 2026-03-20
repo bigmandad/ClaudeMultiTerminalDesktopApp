@@ -30,20 +30,26 @@ export function renderMetricChart(timeline) {
     return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="${color}" />`;
   }).join('');
 
-  // Best value line
-  const bestVal = Math.max(...values.filter((v, i) => statuses[i] === 'keep'));
-  const bestY = H - PAD - ((bestVal - minVal) / range) * (H - PAD * 2);
+  // Best value line (only if any "keep" experiments exist)
+  const keepValues = values.filter((v, i) => statuses[i] === 'keep');
+  let bestLine = '';
+  if (keepValues.length > 0) {
+    const bestVal = Math.max(...keepValues);
+    const bestY = H - PAD - ((bestVal - minVal) / range) * (H - PAD * 2);
+    bestLine = `
+      <line x1="${PAD}" y1="${bestY.toFixed(1)}" x2="${W - PAD}" y2="${bestY.toFixed(1)}"
+            stroke="#6ec76e" stroke-width="0.5" stroke-dasharray="3,3" opacity="0.5"/>
+      <text x="${W - PAD}" y="${(bestY - 3).toFixed(1)}" font-size="8" fill="#6ec76e" text-anchor="end">
+        best: ${bestVal.toFixed(3)}
+      </text>`;
+  }
 
   return `
     <div class="ar-chart">
       <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
-        <line x1="${PAD}" y1="${bestY.toFixed(1)}" x2="${W - PAD}" y2="${bestY.toFixed(1)}"
-              stroke="#6ec76e" stroke-width="0.5" stroke-dasharray="3,3" opacity="0.5"/>
+        ${bestLine}
         <path d="${pathD}" fill="none" stroke="#d4845a" stroke-width="1.5" opacity="0.8"/>
         ${dots}
-        <text x="${W - PAD}" y="${bestY.toFixed(1) - 3}" font-size="8" fill="#6ec76e" text-anchor="end">
-          best: ${bestVal.toFixed(3)}
-        </text>
       </svg>
     </div>`;
 }

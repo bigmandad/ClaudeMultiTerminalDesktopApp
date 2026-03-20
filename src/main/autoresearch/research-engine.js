@@ -9,8 +9,20 @@ const programTemplates = require('./program-templates');
 
 const RESEARCH_DIR = path.join(os.homedir(), '.claude-sessions', 'autoresearch');
 
+// ── Safety limits & diminishing returns defaults ─────────
+const DEFAULTS = {
+  maxExperiments: 100,       // Hard cap on experiment count per session
+  timeoutMinutes: 180,       // 3-hour max runtime
+  stagnationWindow: 8,       // Number of recent experiments to check for stagnation
+  stagnationThreshold: 0.001, // Min improvement delta to count as "progress"
+  maxConsecutiveDiscards: 5, // Stop after N discards in a row
+};
+
 // Active research sessions: targetId -> { sessionId, status, experimentCount, ... }
 const activeResearch = new Map();
+
+// Per-session output buffers for handling chunked PTY data
+const outputBuffers = new Map();
 
 // Callbacks
 let onExperimentComplete = null;
@@ -61,9 +73,10 @@ async function startResearch(config) {
         `autoresearch experiments on ${profile.name}`,
         { topK: 10, tier: 'L1' }
       );
-      if (results?.result?.resources?.length > 0) {
-        pastContext = results.result.resources
-          .map(r => `- ${r.content?.slice(0, 200) || 'no content'}`)
+      const resources = results?.resources || results?.result?.resources || [];
+      if (resources.length > 0) {
+        pastContext = resources
+          .map(r => `- ${(r.abstract || r.content || r.overview || 'no content').slice(0, 200)}`)
           .join('\n');
       }
     } catch { /* OV not available, continue without context */ }
@@ -102,10 +115,7 @@ async function startResearch(config) {
   // Generate session ID
   const sessionId = `research-${targetId.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`;
 
-  // Build the initial prompt that kicks off the research loop
-  const initialPrompt = `Read the file ${programPath} for your research instructions, then begin the experiment loop. Start by reading all editable files listed in the program, establish a baseline understanding, then immediately begin your first experiment.`;
-
-  // Track active research
+  // Track active research (with safety limits from config or defaults)
   const researchState = {
     sessionId,
     targetId,
@@ -116,8 +126,19 @@ async function startResearch(config) {
     lastMetricValue: null,
     bestMetricValue: null,
     startedAt: new Date().toISOString(),
+    // Safety limits
+    maxExperiments: config.maxExperiments || DEFAULTS.maxExperiments,
+    timeoutMinutes: config.timeoutMinutes || DEFAULTS.timeoutMinutes,
+    stagnationWindow: config.stagnationWindow || DEFAULTS.stagnationWindow,
+    stagnationThreshold: config.stagnationThreshold || DEFAULTS.stagnationThreshold,
+    maxConsecutiveDiscards: config.maxConsecutiveDiscards || DEFAULTS.maxConsecutiveDiscards,
+    // Diminishing returns tracking
+    recentMetrics: [],            // Rolling window of recent metric values
+    consecutiveDiscards: 0,       // Counter for discards in a row
+    stopReason: null,             // Why research was auto-stopped (null if still running)
   };
   activeResearch.set(targetId, researchState);
+  console.log(`[ResearchEngine] Research started for ${targetId}: maxExp=${researchState.maxExperiments}, timeout=${researchState.timeoutMinutes}min, maxDiscards=${researchState.maxConsecutiveDiscards}, stagnationWin=${researchState.stagnationWindow}`);
 
   emitStatus(targetId, researchState);
 
@@ -126,7 +147,6 @@ async function startResearch(config) {
     sessionId,
     targetId,
     programPath,
-    initialPrompt,
     workspacePath: profile.sourcePath || os.homedir(),
     profile,
   };
@@ -187,8 +207,8 @@ function getAllStatus() {
 }
 
 /**
- * Process a PTY output line from a research session.
- * Detects experiment result markers and logs them.
+ * Process PTY output from a research session.
+ * Buffers data to handle experiment result blocks split across chunks.
  */
 function processOutput(sessionId, data) {
   // Find which target this session belongs to
@@ -206,49 +226,105 @@ function processOutput(sessionId, data) {
   // Update status to running on first output
   if (research.status === 'starting') {
     research.status = 'running';
+    console.log(`[ResearchEngine] First output received for ${targetId}, status → running`);
+    if (dbRef) {
+      try { dbRef.researchTargets.update(targetId, { status: 'running' }); } catch { /* ignore */ }
+    }
     emitStatus(targetId, research);
   }
 
-  // Detect experiment result block
-  const metricMatch = data.match(/^metric_value:\s*([\d.]+)/m);
-  const statusMatch = data.match(/^status:\s*(keep|discard|crash)/m);
-  const nameMatch = data.match(/^metric_name:\s*(\S+)/m);
-  const descMatch = data.match(/^description:\s*(.+)/m);
+  // Strip ANSI codes and accumulate into buffer
+  const clean = data.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  const buf = (outputBuffers.get(sessionId) || '') + clean;
 
-  if (metricMatch && statusMatch) {
+  // Look for complete result blocks delimited by --- markers
+  // Format: ---\nmetric_name: ...\nmetric_value: ...\nstatus: ...\ndescription: ...\n---
+  const blockRegex = /---\s*\n([\s\S]*?)---/g;
+  let match;
+  let lastIndex = 0;
+
+  while ((match = blockRegex.exec(buf)) !== null) {
+    lastIndex = match.index + match[0].length;
+    const block = match[1];
+
+    const metricMatch = block.match(/^metric_value:\s*([\d.]+)/m);
+    const statusMatch = block.match(/^status:\s*(keep|discard|crash)/m);
+    if (!metricMatch || !statusMatch) continue;
+
+    const nameMatch = block.match(/^metric_name:\s*(\S+)/m);
+    const descMatch = block.match(/^description:\s*(.+)/m);
+    const commitMatch = block.match(/^commit:\s*([a-f0-9]{7,40})/m);
+    const durationMatch = block.match(/^duration:\s*(\d+)/m);
+
+    const parsedMetric = parseFloat(metricMatch[1]);
+
+    // Validate metric value — skip malformed results
+    if (isNaN(parsedMetric)) {
+      console.warn(`[ResearchEngine] Skipping experiment with NaN metric value for ${targetId}`);
+      continue;
+    }
+
     const experiment = {
       targetId,
       sessionId,
-      commitHash: null,
+      commitHash: commitMatch?.[1] || null,
       metricName: nameMatch?.[1] || 'quality',
-      metricValue: parseFloat(metricMatch[1]),
+      metricValue: parsedMetric,
       status: statusMatch[1],
-      description: descMatch?.[1] || '',
-      durationSeconds: null,
+      description: descMatch?.[1]?.trim() || '',
+      durationSeconds: durationMatch ? parseInt(durationMatch[1]) : null,
     };
 
     // Log to TSV
-    experimentTracker.appendTsv(targetId, experiment);
+    try {
+      experimentTracker.appendTsv(targetId, experiment);
+    } catch (tsvErr) {
+      console.error(`[ResearchEngine] TSV write failed for ${targetId}:`, tsvErr.message);
+    }
 
     // Log to DB
     if (dbRef) {
-      try { dbRef.experiments.record(experiment); } catch { /* ignore */ }
+      try {
+        dbRef.experiments.record(experiment);
+      } catch (dbErr) {
+        console.error(`[ResearchEngine] DB record failed for ${targetId}:`, dbErr.message);
+      }
     }
 
     // Write experiment log for OV ingestion
     const logPath = experimentTracker.writeExperimentLog(targetId, experiment);
 
-    // Auto-ingest to OpenViking
+    // Auto-ingest to OpenViking (fire-and-forget with proper logging)
     if (ovClientRef) {
-      ingestExperiment(targetId, experiment, logPath).catch(() => { /* ignore */ });
+      ingestExperiment(targetId, experiment, logPath).catch((ovErr) => {
+        console.warn(`[ResearchEngine] OV ingest failed for ${targetId} exp#${research.experimentCount + 1}:`, ovErr.message);
+      });
     }
 
     // Update research state
     research.experimentCount++;
     research.lastMetricValue = experiment.metricValue;
+    research.recentMetrics.push(experiment.metricValue);
+    console.log(`[ResearchEngine] Experiment #${research.experimentCount} for ${targetId}: ${experiment.status} ${experiment.metricName}=${experiment.metricValue.toFixed(4)} — ${experiment.description?.slice(0, 80)}`);
+
+    // Track consecutive discards
+    if (experiment.status === 'discard' || experiment.status === 'crash') {
+      research.consecutiveDiscards++;
+    } else {
+      research.consecutiveDiscards = 0;
+    }
+
     if (experiment.status === 'keep') {
       if (!research.bestMetricValue || experiment.metricValue > research.bestMetricValue) {
         research.bestMetricValue = experiment.metricValue;
+        // Sync best metric back to DB for crash recovery
+        if (dbRef) {
+          try {
+            dbRef.researchTargets.update(targetId, {
+              bestMetrics: JSON.stringify({ [experiment.metricName]: experiment.metricValue })
+            });
+          } catch { /* ignore */ }
+        }
       }
     }
 
@@ -260,7 +336,18 @@ function processOutput(sessionId, data) {
         researchState: { ...research },
       });
     }
+
+    // Check safety limits after emitting (so UI shows the experiment that triggered the stop)
+    const safetyCheck = checkSafetyLimits(targetId, research);
+    if (safetyCheck && safetyCheck.shouldStop) {
+      autoStopResearch(targetId, safetyCheck.reason);
+      return; // Stop processing further blocks
+    }
   }
+
+  // Keep only unconsumed data in buffer (max 8KB to prevent unbounded growth)
+  const remaining = buf.slice(lastIndex);
+  outputBuffers.set(sessionId, remaining.length > 8192 ? remaining.slice(-4096) : remaining);
 }
 
 /**
@@ -273,14 +360,93 @@ function isResearchSession(sessionId) {
   return false;
 }
 
+// ── Safety limits & diminishing returns ──────────────────
+
+/**
+ * Check if research should be auto-stopped due to safety limits or stagnation.
+ * Returns { shouldStop: boolean, reason: string } or null if fine.
+ */
+function checkSafetyLimits(targetId, research) {
+  // 1. Experiment count hard cap
+  if (research.experimentCount >= research.maxExperiments) {
+    return { shouldStop: true, reason: `max-experiments (${research.maxExperiments})` };
+  }
+
+  // 2. Timeout
+  const elapsedMs = Date.now() - new Date(research.startedAt).getTime();
+  const elapsedMins = elapsedMs / 60000;
+  if (elapsedMins >= research.timeoutMinutes) {
+    return { shouldStop: true, reason: `timeout (${research.timeoutMinutes}min)` };
+  }
+
+  // 3. Consecutive discards
+  if (research.consecutiveDiscards >= research.maxConsecutiveDiscards) {
+    return { shouldStop: true, reason: `${research.consecutiveDiscards} consecutive discards` };
+  }
+
+  // 4. Stagnation detection (moving average not improving)
+  if (research.recentMetrics.length >= research.stagnationWindow) {
+    const window = research.recentMetrics.slice(-research.stagnationWindow);
+    const firstHalf = window.slice(0, Math.floor(window.length / 2));
+    const secondHalf = window.slice(Math.floor(window.length / 2));
+    const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+    const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+    const improvement = avgSecond - avgFirst;
+
+    if (Math.abs(improvement) < research.stagnationThreshold) {
+      return { shouldStop: true, reason: `stagnation (Δ=${improvement.toFixed(4)} over last ${research.stagnationWindow} experiments)` };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Auto-stop research session due to safety limits.
+ * @param {string} targetId
+ * @param {string} reason
+ */
+function autoStopResearch(targetId, reason) {
+  const research = activeResearch.get(targetId);
+  if (!research) {
+    console.log(`[ResearchEngine] autoStop called for ${targetId} but no active research found (already stopped?)`);
+    return;
+  }
+
+  const elapsedMs = Date.now() - new Date(research.startedAt).getTime();
+  const elapsedMin = (elapsedMs / 60000).toFixed(1);
+  console.log(`[ResearchEngine] Auto-stopping ${targetId}: ${reason} (${research.experimentCount} experiments, ${elapsedMin}min, best=${research.bestMetricValue})`);
+  research.status = 'auto-stopped';
+  research.stopReason = reason;
+  activeResearch.delete(targetId);
+
+  if (dbRef) {
+    try { dbRef.researchTargets.update(targetId, { status: 'auto-stopped' }); } catch { /* ignore */ }
+  }
+
+  emitStatus(targetId, { ...research, status: 'auto-stopped', stopReason: reason });
+
+  // Emit as experiment event too so renderer gets notified
+  if (onExperimentComplete) {
+    onExperimentComplete({
+      targetId,
+      autoStopped: true,
+      stopReason: reason,
+      researchState: { ...research },
+    });
+  }
+}
+
 // ── OpenViking auto-ingest ───────────────────────────────
 
 async function ingestExperiment(targetId, experiment, logPath) {
   if (!ovClientRef || !logPath) return;
   try {
+    const research = activeResearch.get(targetId);
+    const expNum = research ? research.experimentCount : '?';
     await ovClientRef.addResource(logPath, {
       scope: 'resources',
-      reason: `AutoResearch: ${experiment.status} on ${targetId} — ${experiment.description}`,
+      reason: `AutoResearch exp #${expNum}: ${experiment.status} on ${targetId} (${experiment.metricName}=${experiment.metricValue.toFixed(3)}) — ${experiment.description}`,
       tags: ['autoresearch', targetId, experiment.status, experiment.metricName],
     });
   } catch (err) {
@@ -303,8 +469,10 @@ module.exports = {
   startResearch,
   stopResearch,
   pauseResearch,
+  autoStopResearch,
   getStatus,
   getAllStatus,
   processOutput,
   isResearchSession,
+  DEFAULTS,
 };

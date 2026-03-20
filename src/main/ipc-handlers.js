@@ -25,9 +25,59 @@ function registerIpcHandlers(ipcMain) {
 
   // ── PTY Handlers ──────────────────────────────────────────
 
-  ipcMain.handle('pty:spawn', (event, opts) => {
+  ipcMain.handle('pty:spawn', async (event, opts) => {
     console.log('[Main:pty:spawn] id=' + opts.id, 'cwd=' + (opts.cwd || 'default'), 'launchClaude=' + (opts.launchClaude !== false));
+
+    // OV Context Seeding — query OpenViking for workspace-relevant knowledge
+    let ovContext = '';
+    if (opts.launchClaude !== false && !opts.resume) {
+      try {
+        const ovClientLocal = require('./openviking/ov-client');
+        const workspaceDir = opts.cwd || os.homedir();
+        const workspaceName = path.basename(workspaceDir);
+        const results = await ovClientLocal.search(
+          `${workspaceName} project context patterns`,
+          { topK: 5, tier: 'L0' }
+        );
+        const resources = results?.resources || [];
+        const memories = results?.memories || [];
+        const snippets = [];
+        for (const r of resources.slice(0, 3)) {
+          const text = (r.abstract || r.content || '').slice(0, 150);
+          if (text) snippets.push(`- ${text}`);
+        }
+        for (const m of memories.slice(0, 2)) {
+          const text = (m.abstract || m.content || '').slice(0, 150);
+          if (text) snippets.push(`- [Memory] ${text}`);
+        }
+        if (snippets.length > 0) {
+          ovContext = `\n\nPrior knowledge from OpenViking:\n${snippets.join('\n')}`;
+          console.log(`[Main:pty:spawn] OV context seeded: ${snippets.length} snippets`);
+        }
+      } catch (ovErr) {
+        console.log('[Main:pty:spawn] OV context seeding skipped:', ovErr.message);
+      }
+    }
+
+    // Inject active research results from blackboard
+    let bbContext = '';
     try {
+      const researchEntries = db.blackboard.getByCategory('research');
+      if (researchEntries && researchEntries.length > 0) {
+        const summaries = researchEntries.slice(0, 3).map(e => {
+          try { return JSON.parse(e.value); } catch { return null; }
+        }).filter(Boolean).map(r => `- ${r.metric}: ${r.value} (${r.status}, exp #${r.experimentCount})`);
+        if (summaries.length > 0) {
+          bbContext = `\n\nActive research results:\n${summaries.join('\n')}`;
+        }
+      }
+    } catch (bbErr) {
+      // Blackboard read failed, non-fatal
+    }
+
+    try {
+      const combined = (opts.systemPrompt || '') + ovContext + bbContext;
+      const effectiveSystemPrompt = combined.length > 0 ? combined : undefined;
       const session = PtyManager.create(opts.id, {
         cwd: opts.cwd || os.homedir(),
         cols: opts.cols || 120,
@@ -37,7 +87,15 @@ function registerIpcHandlers(ipcMain) {
         model: opts.model,
         mcpConfig: opts.mcpConfig,
         resume: opts.resume,
-        systemPrompt: opts.systemPrompt,
+        resumeSessionId: opts.resumeSessionId,
+        systemPrompt: effectiveSystemPrompt,
+        name: opts.name,
+        maxTurns: opts.maxTurns,
+        allowedTools: opts.allowedTools,
+        disallowedTools: opts.disallowedTools,
+        tools: opts.tools,
+        mcpDebug: opts.mcpDebug,
+        verbose: opts.verbose,
         launchClaude: opts.launchClaude !== false
       });
       console.log('[Main:pty:spawn] PtySession created');
@@ -54,6 +112,10 @@ function registerIpcHandlers(ipcMain) {
         console.error('[Main:pty:spawn] transcription start failed (non-fatal):', tErr.message);
       }
 
+      // Initialize micro-ingest for this session
+      const microIngest = require('./openviking/ov-micro-ingest');
+      const sessionMeta = { name: opts.name || opts.id, workspacePath: opts.cwd, mode: opts.mode };
+
       let dataPackets = 0;
       session.onDataCallback = (data) => {
         dataPackets++;
@@ -65,9 +127,24 @@ function registerIpcHandlers(ipcMain) {
           win.webContents.send('pty:data', { id: opts.id, data });
         }
         // Write to transcript
-        try { transcriber.write(opts.id, data); } catch(e) { /* ignore */ }
+        try { transcriber.write(opts.id, data); } catch(e) {
+          if (dataPackets <= 5) console.warn('[Main:pty:data] transcript write failed:', e.message);
+        }
         // Capture for remote API
-        try { remoteApi.captureOutput(opts.id, data); } catch(e) { /* ignore */ }
+        try { remoteApi.captureOutput(opts.id, data); } catch(e) {
+          if (dataPackets <= 5) console.warn('[Main:pty:data] remote capture failed:', e.message);
+        }
+        // Real-time micro-ingest to OpenViking
+        try { microIngest.processOutput(opts.id, data, sessionMeta); } catch(e) {
+          if (dataPackets <= 5) console.warn('[Main:pty:data] micro-ingest failed:', e.message);
+        }
+        // Dispatch to messaging platforms (Discord, Telegram, etc.)
+        try {
+          const messagingBridge = require('./remote/messaging-bridge');
+          messagingBridge.dispatchOutput(opts.id, data);
+        } catch(e) {
+          if (dataPackets <= 5) console.warn('[Main:pty:data] messaging dispatch failed:', e.message);
+        }
       };
 
       session.onExitCallback = (exitCode) => {
@@ -76,7 +153,16 @@ function registerIpcHandlers(ipcMain) {
         if (win && !win.isDestroyed()) {
           win.webContents.send('pty:exit', { id: opts.id, exitCode });
         }
-        try { transcriber.endSession(opts.id); } catch(e) { /* ignore */ }
+        try { transcriber.endSession(opts.id); } catch(e) {
+          console.warn('[Main:pty:exit] transcript end failed:', e.message);
+        }
+        // Clean up micro-ingest state
+        try { microIngest.endSession(opts.id); } catch { /* ignore */ }
+        // Clean up messaging bridge VT buffer
+        try {
+          const messagingBridge = require('./remote/messaging-bridge');
+          messagingBridge.cleanupSession(opts.id);
+        } catch { /* ignore */ }
 
         // Auto-ingest transcript into OpenViking on session end
         try {
@@ -104,6 +190,30 @@ function registerIpcHandlers(ipcMain) {
 
       session.spawn();
       console.log('[Main:pty:spawn] PTY spawned successfully for', opts.id);
+
+      // Auto-create Discord channel for this session if bot is running
+      try {
+        const discordBot = require('./remote/discord-bot');
+        if (discordBot.isRunning()) {
+          const sessionData = {
+            id: opts.id,
+            name: opts.name || opts.id,
+            mode: opts.mode || 'ask',
+            workspace_path: opts.cwd,
+            status: 'active'
+          };
+          discordBot.autoCreateChannel(sessionData).then(result => {
+            if (result) {
+              console.log(`[Main:pty:spawn] Discord channel auto-created for ${opts.name || opts.id}`);
+            }
+          }).catch(e => {
+            console.log('[Main:pty:spawn] Discord auto-channel skipped:', e.message);
+          });
+        }
+      } catch (e) {
+        // Discord bot not loaded — non-fatal
+      }
+
       return { success: true };
     } catch (error) {
       console.error('[Main:pty:spawn] ERROR:', error.message, error.stack);
@@ -480,6 +590,17 @@ function registerIpcHandlers(ipcMain) {
 
   ipcMain.handle('app:getPlatform', () => {
     return { platform: process.platform, arch: process.arch };
+  });
+
+  ipcMain.handle('app:dbHealth', () => {
+    try {
+      const row = db.init().prepare('SELECT 1 as ok').get();
+      const sessionCount = db.sessions.list().length;
+      const targetCount = db.researchTargets.list().length;
+      return { ok: !!row?.ok, sessions: sessionCount, targets: targetCount };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   ipcMain.handle('clipboard:write', (event, text) => {
@@ -863,7 +984,7 @@ function registerIpcHandlers(ipcMain) {
             if (process.platform === 'win32') {
               require('child_process').execSync(`mklink /J "${linkPath}" "${memberWorkspaces[i]}"`, { shell: true });
             } else {
-              fs.symlinkSync(memberWorkspaces[i], linkPath, 'junction');
+              fs.symlinkSync(memberWorkspaces[i], linkPath, 'dir');
             }
           } catch (linkErr) {
             // If symlink fails, write the path reference
@@ -919,6 +1040,54 @@ function registerIpcHandlers(ipcMain) {
 
   ipcMain.handle('remote:status', () => {
     return { running: remoteApi.isRunning() };
+  });
+
+  // ── Discord Bot ────────────────────────────────────────
+
+  const discordBot = require('./remote/discord-bot');
+
+  // Forward Discord status changes to renderer
+  discordBot.onStatusChange((status) => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('discord:statusChanged', status);
+    }
+  });
+
+  ipcMain.handle('discord:start', async (event, token) => {
+    try {
+      // Auto-save token and enabled state when starting
+      if (token) {
+        db.appState.set('discord_bot_token', token);
+        db.appState.set('discord_bot_enabled', true);
+      }
+      return await discordBot.start(token);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('discord:stop', async () => {
+    await discordBot.stop();
+    return { success: true };
+  });
+
+  ipcMain.handle('discord:status', () => {
+    return discordBot.getStatus();
+  });
+
+  ipcMain.handle('discord:setToken', (event, token) => {
+    db.appState.set('discord_bot_token', token);
+    return { success: true };
+  });
+
+  ipcMain.handle('discord:getToken', () => {
+    const token = db.appState.get('discord_bot_token');
+    return token ? { exists: true, masked: '***' + token.slice(-4) } : { exists: false };
+  });
+
+  ipcMain.handle('discord:bindings', () => {
+    return db.channelBindings.listByPlatform('discord');
   });
 
   // ── App State ───────────────────────────────────────────
@@ -1082,6 +1251,10 @@ function registerIpcHandlers(ipcMain) {
     db
   });
 
+  // Initialize micro-ingest with OV client
+  const microIngest = require('./openviking/ov-micro-ingest');
+  microIngest.init(ovClient);
+
   // Forward research status changes to renderer
   researchEngine.onStatus((status) => {
     const win = getMainWindow();
@@ -1090,11 +1263,78 @@ function registerIpcHandlers(ipcMain) {
     }
   });
 
-  // Forward experiment completions to renderer
+  // Forward experiment completions to renderer + native notifications + blackboard
   researchEngine.onExperiment((result) => {
     const win = getMainWindow();
     if (win && !win.isDestroyed()) {
       win.webContents.send('research:experimentComplete', result);
+    }
+
+    // Write experiment results to blackboard for cross-session visibility
+    if (result.experiment) {
+      const exp = result.experiment;
+      const rs = result.researchState;
+      try {
+        // Latest experiment result — any session can read this
+        db.blackboard.set(
+          result.targetId,
+          `research:${result.targetId}:latest`,
+          JSON.stringify({
+            status: exp.status,
+            metric: exp.metricName,
+            value: exp.metricValue,
+            description: exp.description,
+            experimentCount: rs.experimentCount,
+            bestValue: rs.bestMetricValue,
+            timestamp: new Date().toISOString()
+          }),
+          'research',
+          3600 // 1 hour TTL
+        );
+        // Best metric — persists longer
+        if (exp.status === 'keep' && rs.bestMetricValue === exp.metricValue) {
+          db.blackboard.set(
+            result.targetId,
+            `research:${result.targetId}:best`,
+            JSON.stringify({
+              metric: exp.metricName,
+              value: exp.metricValue,
+              experimentCount: rs.experimentCount,
+              timestamp: new Date().toISOString()
+            }),
+            'research',
+            86400 // 24 hour TTL
+          );
+        }
+        // Broadcast blackboard update to renderer
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('blackboard:updated', {
+            sessionId: result.targetId,
+            key: `research:${result.targetId}:latest`,
+            category: 'research'
+          });
+        }
+      } catch (bbErr) {
+        console.log('[Research] Blackboard write failed:', bbErr.message);
+      }
+    }
+
+    // Native notifications for key research events
+    if (result.autoStopped) {
+      notifier.researchAutoStopped(result.targetId, result.stopReason);
+    } else if (result.experiment) {
+      const exp = result.experiment;
+      const state = result.researchState;
+
+      // Notify on new best metric
+      if (exp.status === 'keep' && state.bestMetricValue === exp.metricValue) {
+        notifier.researchNewBest(result.targetId, exp.metricName, exp.metricValue, state.experimentCount);
+      }
+
+      // Notify on crashes
+      if (exp.status === 'crash') {
+        notifier.researchExperimentFailed(result.targetId, state.experimentCount, exp.description);
+      }
     }
   });
 
@@ -1110,6 +1350,11 @@ function registerIpcHandlers(ipcMain) {
 
   // Start autonomous research on a target
   ipcMain.handle('research:start', async (event, config) => {
+    // Headless mode: use claude -p (pipe mode) with structured JSON output
+    if (config.mode === 'headless') {
+      return startHeadlessResearch(config, getMainWindow, notifier);
+    }
+
     const result = await researchEngine.startResearch(config);
     if (!result.success) return result;
 
@@ -1119,11 +1364,27 @@ function registerIpcHandlers(ipcMain) {
         cwd: result.workspacePath,
         cols: 120,
         rows: 40,
-        mode: 'auto-accept',
         skipPerms: true,
         launchClaude: true,
-        systemPrompt: result.initialPrompt
+        maxTurns: config.maxTurns || 500,  // Research needs many turns (reads, edits, tests)
+        name: `Research: ${result.targetId}`,
+        verbose: false,
       });
+
+      let promptSent = false;
+      const spawnTime = Date.now();
+      console.log(`[Research] PTY spawned for ${result.targetId}, session=${result.sessionId}, cwd=${result.workspacePath}`);
+
+      // Build the research prompt once
+      const safePath = result.programPath.replace(/\\/g, '/');
+      const researchPrompt = `Read the file ${safePath} for your research instructions, then begin the experiment loop. Start by reading all editable files listed in the program, establish a baseline understanding, then immediately begin your first experiment.`;
+
+      function sendResearchPrompt(reason) {
+        if (promptSent) return;
+        promptSent = true;
+        console.log('[Research] Sending initial prompt (' + reason + ') to', result.sessionId);
+        PtyManager.write(result.sessionId, researchPrompt + '\r');
+      }
 
       session.onDataCallback = (data) => {
         const win = getMainWindow();
@@ -1132,18 +1393,74 @@ function registerIpcHandlers(ipcMain) {
         }
         // Process output for experiment result detection
         researchEngine.processOutput(result.sessionId, data);
+
+        // Detect when Claude CLI is ready and send the initial research prompt.
+        // Skip first 1.5s to avoid matching PowerShell's PS C:\...> prompt.
+        // Claude CLI launches at T+800ms, greeting arrives ~T+1.5-2.5s.
+        if (!promptSent) {
+          if (Date.now() - spawnTime < 1500) return;
+          const clean = data.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim();
+          // Match Claude CLI greeting patterns, standalone > prompt, or the tips banner
+          if (clean.includes('How can I help') ||
+              clean.includes('What would you like') ||
+              clean.includes('What can I help') ||
+              clean.includes('Tips:') ||
+              clean.includes('Claude') ||
+              /^\s*>\s*$/m.test(clean)) {
+            // Brief delay to let Claude finish rendering its greeting
+            setTimeout(() => sendResearchPrompt('greeting-detected'), 300);
+          }
+        }
       };
 
       session.onExitCallback = (exitCode) => {
+        const elapsedSec = Math.round((Date.now() - spawnTime) / 1000);
+        const status = researchEngine.getStatus(result.targetId);
+        const expCount = status.experimentCount || 0;
+        const wasActive = status.status !== 'idle';
+        console.log(`[Research] PTY exited for ${result.targetId}: code=${exitCode}, elapsed=${elapsedSec}s, experiments=${expCount}, promptSent=${promptSent}, wasActive=${wasActive}`);
+
         const win = getMainWindow();
         if (win && !win.isDestroyed()) {
           win.webContents.send('pty:exit', { id: result.sessionId, exitCode });
         }
-        researchEngine.stopResearch(result.targetId);
+
+        // Skip if already cleaned up by manual stop (prevents duplicate notifications)
+        if (!wasActive) {
+          console.log(`[Research] PTY exit for ${result.targetId} — already stopped, skipping autoStop`);
+          return;
+        }
+
+        // Determine stop reason for better diagnostics
+        let reason;
+        if (exitCode !== 0 && elapsedSec < 10) {
+          reason = `CLI exited immediately (code ${exitCode}) — check claude auth/installation`;
+        } else if (exitCode !== 0) {
+          reason = `CLI exited with error (code ${exitCode}) after ${elapsedSec}s`;
+        } else if (expCount === 0 && elapsedSec < 30) {
+          reason = `session ended before any experiments (${elapsedSec}s) — may need more max-turns`;
+        } else if (expCount === 0) {
+          reason = `max-turns reached with 0 experiments — try increasing max-turns`;
+        } else {
+          reason = `max-turns reached after ${expCount} experiments`;
+        }
+
+        // Use autoStop with reason so the user gets a diagnostic toast
+        researchEngine.autoStopResearch(result.targetId, reason);
+        notifier.researchStopped(result.targetId, reason);
       };
 
       session.spawn();
+
+      // Fallback: if greeting detection missed, send prompt after 8 seconds regardless.
+      // Claude CLI should definitely be ready by then.
+      setTimeout(() => sendResearchPrompt('fallback-timer'), 8000);
+
+      // Notify user that research has started
+      notifier.researchStarted(result.targetId);
     } catch (err) {
+      // Kill any zombie PTY process that may have been created before the error
+      try { PtyManager.kill(result.sessionId); } catch { /* may not exist */ }
       researchEngine.stopResearch(result.targetId);
       return { success: false, error: `PTY spawn failed: ${err.message}` };
     }
@@ -1151,13 +1468,28 @@ function registerIpcHandlers(ipcMain) {
     return result;
   });
 
-  // Stop research
+  // Stop research (PTY or headless)
   ipcMain.handle('research:stop', (event, targetId) => {
+    // Try headless abort first
+    const headlessResearch = require('./autoresearch/headless-research');
+    if (headlessResearch.isHeadlessActive(targetId)) {
+      const abortResult = headlessResearch.abortHeadlessResearch(targetId);
+      // Also clean up research engine state (headless uses both maps)
+      try { researchEngine.stopResearch(targetId); } catch { /* may not exist */ }
+      if (abortResult.success) notifier.researchStopped(targetId, 'manual stop (headless)');
+      return abortResult;
+    }
+
+    // PTY mode
     const status = researchEngine.getStatus(targetId);
     if (status.sessionId) {
-      try { PtyManager.kill(status.sessionId); } catch { /* ignore */ }
+      try { PtyManager.kill(status.sessionId); } catch (killErr) {
+        console.warn('[Research:stop] PTY kill failed:', killErr.message);
+      }
     }
-    return researchEngine.stopResearch(targetId);
+    const stopResult = researchEngine.stopResearch(targetId);
+    if (stopResult.success) notifier.researchStopped(targetId, 'manual stop');
+    return stopResult;
   });
 
   // Pause research
@@ -1170,9 +1502,16 @@ function registerIpcHandlers(ipcMain) {
     return researchEngine.getStatus(targetId);
   });
 
-  // Get status of all active research
+  // Get status of all active research (PTY + headless)
   ipcMain.handle('research:allStatus', () => {
-    return researchEngine.getAllStatus();
+    const ptyStatus = researchEngine.getAllStatus();
+    try {
+      const headlessResearch = require('./autoresearch/headless-research');
+      const headlessStatus = headlessResearch.getHeadlessStatus();
+      return { ...ptyStatus, ...headlessStatus };
+    } catch {
+      return ptyStatus;
+    }
   });
 
   // Get experiments for a target (from DB)
@@ -1180,9 +1519,20 @@ function registerIpcHandlers(ipcMain) {
     return db.experiments.getByTarget(targetId, limit);
   });
 
-  // Get experiment timeline for a target
+  // Get experiment timeline for a target (auto-fallback: DB → TSV)
   ipcMain.handle('research:timeline', (event, targetId) => {
-    return db.experiments.getTimeline(targetId);
+    const dbTimeline = db.experiments.getTimeline(targetId);
+    if (dbTimeline && dbTimeline.length > 0) return dbTimeline;
+    // Fallback to TSV if DB is empty
+    const rows = experimentTracker.readTsv(targetId);
+    return rows.map((r, i) => ({
+      id: i + 1,
+      metric_name: r.metricName,
+      metric_value: r.metricValue,
+      status: r.status,
+      description: r.description,
+      created_at: r.timestamp
+    }));
   });
 
   // Get best experiment for a target
@@ -1200,6 +1550,19 @@ function registerIpcHandlers(ipcMain) {
     return experimentTracker.getStats(targetId);
   });
 
+  // Get full TSV timeline data (fallback when DB is empty)
+  ipcMain.handle('research:tsvTimeline', (event, targetId) => {
+    const rows = experimentTracker.readTsv(targetId);
+    return rows.map((r, i) => ({
+      id: i + 1,
+      metric_name: r.metricName,
+      metric_value: r.metricValue,
+      status: r.status,
+      description: r.description,
+      created_at: r.timestamp
+    }));
+  });
+
   // Get all research targets from DB
   ipcMain.handle('research:dbTargets', () => {
     return db.researchTargets.list();
@@ -1209,19 +1572,158 @@ function registerIpcHandlers(ipcMain) {
   ipcMain.handle('research:deleteTarget', (event, targetId) => {
     try {
       researchEngine.stopResearch(targetId);
-    } catch { /* may not be active */ }
+    } catch (e) {
+      console.log('[Research:deleteTarget] Stop skipped (may not be active):', e.message);
+    }
     db.researchTargets.delete(targetId);
     return { success: true };
   });
+
+  // ── Blackboard (cross-session shared state) ─────────────
+
+  ipcMain.handle('blackboard:set', (event, sessionId, key, value, category, ttl) => {
+    db.blackboard.set(sessionId, key, value, category, ttl);
+    // Notify all renderers
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('blackboard:updated', { sessionId, key, value, category });
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('blackboard:get', (event, key) => {
+    return db.blackboard.get(key);
+  });
+
+  ipcMain.handle('blackboard:list', (event, category) => {
+    if (category) return db.blackboard.getByCategory(category);
+    return db.blackboard.list();
+  });
+
+  ipcMain.handle('blackboard:delete', (event, key) => {
+    db.blackboard.delete(key);
+    return { success: true };
+  });
+
+  ipcMain.handle('blackboard:clear', (event, sessionId) => {
+    db.blackboard.clear(sessionId || null);
+    return { success: true };
+  });
+
+  // ── Hook Events ─────────────────────────────────────────
+
+  ipcMain.handle('hooks:recent', (event, limit) => {
+    return db.hookEvents.getRecent(limit || 50);
+  });
+
+  ipcMain.handle('hooks:bySession', (event, sessionId, limit) => {
+    return db.hookEvents.getBySession(sessionId, limit || 50);
+  });
+
+  ipcMain.handle('hooks:stats', () => {
+    return db.hookEvents.getToolUsageStats();
+  });
+
+  // Wire hook events from Remote API to renderer
+  remoteApi.onHookEvent((hookEvent) => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('hooks:event', hookEvent);
+    }
+  });
+}
+
+/**
+ * Start headless (pipe mode) research — runs Claude CLI with -p flag.
+ * Returns immediately; the research loop runs asynchronously.
+ */
+async function startHeadlessResearch(config, getMainWindow, notifier) {
+  const headlessResearch = require('./autoresearch/headless-research');
+  const researchEngine = require('./autoresearch/research-engine');
+  const experimentTracker = require('./autoresearch/experiment-tracker');
+
+  // Use the research engine to set up the target and generate program.md
+  const result = await researchEngine.startResearch(config);
+  if (!result.success) return result;
+
+  // Immediately mark as headless mode and return to UI
+  console.log(`[HeadlessResearch] Starting headless research for ${result.targetId}`);
+  notifier.researchStarted(result.targetId);
+
+  // Initialize experiment tracking
+  experimentTracker.initTarget(result.targetId);
+
+  let ovClient = null;
+  try { ovClient = require('./openviking/ov-client'); } catch { /* OV not available */ }
+
+  // Run the headless research loop asynchronously (non-blocking)
+  headlessResearch.runHeadlessResearch({
+    targetId: result.targetId,
+    profile: result.profile,
+    programPath: result.programPath,
+    workspacePath: result.workspacePath,
+    maxExperiments: config.maxExperiments || 20,
+    maxTurnsPerExperiment: config.maxTurns || 200,
+    maxConsecutiveDiscards: config.maxConsecutiveDiscards || 5,
+    dbRef: db,
+    ovClientRef: ovClient,
+    onExperiment: (data) => {
+      const win = getMainWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('research:experimentComplete', data);
+      }
+
+      // Notifications
+      if (data.autoStopped) {
+        notifier.researchAutoStopped(data.targetId, data.stopReason);
+        // Clean up research engine state
+        researchEngine.stopResearch(data.targetId);
+      } else if (data.experiment) {
+        const exp = data.experiment;
+        const state = data.researchState;
+        if (exp.status === 'keep' && state.bestMetricValue === exp.metricValue) {
+          notifier.researchNewBest(data.targetId, exp.metricName, exp.metricValue, state.experimentCount);
+        }
+        if (exp.status === 'crash') {
+          notifier.researchExperimentFailed(data.targetId, state.experimentCount, exp.description);
+        }
+      }
+    },
+    onStatus: (status) => {
+      const win = getMainWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('research:statusChanged', status);
+      }
+    },
+  }).then((finalResult) => {
+    console.log(`[HeadlessResearch] Completed for ${result.targetId}:`, JSON.stringify(finalResult));
+    // Clean up research engine state after headless completion
+    researchEngine.stopResearch(result.targetId);
+    notifier.researchStopped(result.targetId, finalResult.stopReason || 'completed');
+  }).catch((err) => {
+    console.error(`[HeadlessResearch] Error for ${result.targetId}:`, err.message);
+    researchEngine.stopResearch(result.targetId);
+    notifier.researchStopped(result.targetId, `error: ${err.message}`);
+  });
+
+  return { ...result, mode: 'headless' };
 }
 
 function cleanup() {
   transcriber.closeAll();
   mcpManager.stopAll();
   try {
+    const discordBot = require('./remote/discord-bot');
+    discordBot.stop();
+  } catch (e) {
+    console.warn('[Cleanup] Discord bot stop failed:', e.message);
+  }
+  try {
     const ovServer = require('./openviking/ov-server');
     ovServer.stopServer();
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    console.warn('[Cleanup] OV server stop failed:', e.message);
+  }
   db.close();
 }
 

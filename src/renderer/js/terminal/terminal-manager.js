@@ -90,10 +90,10 @@ class TerminalManagerClass {
       <div class="pane-input-bar">
         <button class="input-btn attach-btn" title="Add Reference">+</button>
         <div class="attachment-pills"></div>
-        <input type="text" class="pane-input" placeholder="Type a message...">
+        <textarea class="pane-input" placeholder="Type a message..." rows="1"></textarea>
         <button class="input-btn plugin-btn" title="Plugins">&#10033;</button>
         <button class="input-btn mic-btn" title="Speech to Text">&#127908;</button>
-        <button class="input-btn send-btn" title="Send (Ctrl+Enter)">&#10148;</button>
+        <button class="input-btn send-btn" title="Send (Enter)">&#10148;</button>
       </div>
     `;
     return paneEl;

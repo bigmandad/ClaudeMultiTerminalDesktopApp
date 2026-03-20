@@ -8,6 +8,7 @@ const db = require('../db/database');
 
 let server = null;
 let outputBuffers = new Map(); // sessionId -> last N lines of output
+let hookEventCallback = null; // Callback for forwarding hook events to renderer
 const MAX_BUFFER_LINES = 50;
 
 function captureOutput(sessionId, data) {
@@ -176,6 +177,118 @@ function handleRequest(req, body, res) {
     return;
   }
 
+  // ── Claude Code Hooks Receiver ─────────────────────────
+
+  // POST /api/hooks — receive lifecycle events from Claude Code hooks
+  if (req.method === 'POST' && pathname === '/api/hooks') {
+    let data;
+    try {
+      data = JSON.parse(body);
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      return;
+    }
+
+    const event = {
+      sessionId: data.session_id || data.sessionId || null,
+      hookType: data.hook_type || data.hookType || data.type || 'unknown',
+      eventName: data.event || data.eventName || 'unknown',
+      toolName: data.tool_name || data.toolName || data.tool || null,
+      filePath: data.file_path || data.filePath || null,
+      result: data.result || data.status || null,
+      metadata: data.metadata || data,
+    };
+
+    try {
+      db.hookEvents.record(event);
+    } catch (e) {
+      console.warn('[RemoteAPI] Hook event DB record failed:', e.message);
+    }
+
+    // Emit to renderer via callback
+    if (hookEventCallback) {
+      hookEventCallback(event);
+    }
+
+    console.log(`[RemoteAPI] Hook: ${event.eventName} (${event.hookType}) tool=${event.toolName || '-'}`);
+    res.writeHead(200);
+    res.end(JSON.stringify({ received: true, event: event.eventName }));
+    return;
+  }
+
+  // GET /api/hooks/recent — get recent hook events
+  if (req.method === 'GET' && pathname === '/api/hooks/recent') {
+    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const events = db.hookEvents.getRecent(limit);
+    res.writeHead(200);
+    res.end(JSON.stringify({ events }));
+    return;
+  }
+
+  // GET /api/hooks/stats — get tool usage statistics from hooks
+  if (req.method === 'GET' && pathname === '/api/hooks/stats') {
+    const stats = db.hookEvents.getToolUsageStats();
+    res.writeHead(200);
+    res.end(JSON.stringify({ stats }));
+    return;
+  }
+
+  // ── Blackboard (cross-session state) ──────────────────
+
+  // GET /api/blackboard — list all blackboard entries
+  if (req.method === 'GET' && pathname === '/api/blackboard') {
+    db.blackboard.prune(); // cleanup expired entries
+    const entries = db.blackboard.list();
+    res.writeHead(200);
+    res.end(JSON.stringify({ entries }));
+    return;
+  }
+
+  // POST /api/blackboard — set a blackboard entry
+  if (req.method === 'POST' && pathname === '/api/blackboard') {
+    let data;
+    try {
+      data = JSON.parse(body);
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      return;
+    }
+
+    if (!data.key) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Missing key' }));
+      return;
+    }
+
+    db.blackboard.set(
+      data.session_id || data.sessionId || null,
+      data.key,
+      data.value,
+      data.category || 'general',
+      data.ttl || null
+    );
+
+    res.writeHead(200);
+    res.end(JSON.stringify({ success: true, key: data.key }));
+    return;
+  }
+
+  // GET /api/blackboard/:key — get a specific entry
+  if (req.method === 'GET' && pathname.startsWith('/api/blackboard/')) {
+    const key = decodeURIComponent(pathname.split('/api/blackboard/')[1]);
+    const entry = db.blackboard.get(key);
+    if (entry) {
+      res.writeHead(200);
+      res.end(JSON.stringify(entry));
+    } else {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'Key not found' }));
+    }
+    return;
+  }
+
   // GET /api/status — server status
   if (req.method === 'GET' && (pathname === '/api/status' || pathname === '/')) {
     res.writeHead(200);
@@ -188,6 +301,12 @@ function handleRequest(req, body, res) {
         'GET  /api/session/:id/output',
         'POST /api/session/:id/send',
         'POST /api/webhook/gchat',
+        'POST /api/hooks',
+        'GET  /api/hooks/recent',
+        'GET  /api/hooks/stats',
+        'GET  /api/blackboard',
+        'POST /api/blackboard',
+        'GET  /api/blackboard/:key',
         'GET  /api/status'
       ]
     }));
@@ -210,4 +329,8 @@ function isRunning() {
   return server !== null;
 }
 
-module.exports = { startServer, stopServer, isRunning, captureOutput, getOutput };
+function onHookEvent(callback) {
+  hookEventCallback = callback;
+}
+
+module.exports = { startServer, stopServer, isRunning, captureOutput, getOutput, onHookEvent };

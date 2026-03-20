@@ -34,11 +34,33 @@ import { initOpenVikingPanel } from './openviking/openviking-panel.js';
 import { initKnowledgeSearch } from './openviking/knowledge-search.js';
 import { initSystemStatus } from './stats/system-status.js';
 import { initAutoResearchPanel } from './autoresearch/autoresearch-panel.js';
+import { initActivityPanel } from './activity/activity-panel.js';
+import { showSetupWizard } from './setup/setup-wizard-panel.js';
 
 // ── Initialize ────────────────────────────────────────────
 
 async function init() {
   console.log('Claude Sessions initializing...');
+
+  // Check if first-run setup is needed
+  try {
+    const setupComplete = await window.api.setup.isComplete();
+    if (!setupComplete) {
+      console.log('[App] First-run setup required — launching wizard');
+      // Expose a callback so the wizard can start the app after completion
+      window.__startApp = () => initApp();
+      showSetupWizard();
+      return;
+    }
+  } catch (err) {
+    console.warn('[App] Setup check failed, continuing normally:', err.message);
+  }
+
+  await initApp();
+}
+
+async function initApp() {
+  console.log('[App] Initializing main application...');
 
   // Init core UI modules
   terminalManager.init();
@@ -73,6 +95,7 @@ async function init() {
   initKnowledgeSearch();
   initSystemStatus();
   initAutoResearchPanel();
+  initActivityPanel();
 
   // Tab key prevention on ALL inputs globally
   document.addEventListener('keydown', (e) => {
@@ -280,6 +303,58 @@ async function init() {
   events.on('session:added', () => setTimeout(saveAppMemory, 1000));
   events.on('session:removed', () => setTimeout(saveAppMemory, 1000));
   events.on('layout:changed', () => setTimeout(saveAppMemory, 500));
+
+  // ── Discord Remote Session Creation ─────────────────────
+  // When Discord bot creates a session, spawn a PTY for it in the app
+  if (window.api.pty.onDiscordSessionRequested) {
+    window.api.pty.onDiscordSessionRequested(async (data) => {
+      console.log('[App] Discord session requested:', data);
+      try {
+        // Use the session ID from Discord (already in DB)
+        const session = {
+          id: data.id,
+          name: data.name || `Discord Session`,
+          workspacePath: data.workspacePath || '',
+          mode: 'ask',
+          skipPerms: false,
+          groupId: null,
+          model: null,
+          status: 'active',
+          lastMessage: ''
+        };
+
+        // Add to in-memory state
+        state.addSession(session);
+        renderTabs();
+
+        // Spawn PTY
+        await window.api.pty.spawn({
+          id: data.id,
+          name: data.name,
+          cwd: data.workspacePath || undefined,
+          mode: 'ask',
+          skipPerms: false,
+          launchClaude: true
+        });
+
+        // Assign to an empty pane if available
+        const emptyPane = state.paneAssignments.findIndex(a => !a);
+        if (emptyPane >= 0) {
+          terminalManager.attachSessionToPane(emptyPane, data.id);
+        }
+
+        showToast({
+          title: `Discord session: ${data.name}`,
+          message: 'Created from Discord lobby',
+          icon: '&#128172;'
+        });
+
+        console.log('[App] Discord session spawned:', data.id);
+      } catch (err) {
+        console.error('[App] Failed to spawn Discord session:', err);
+      }
+    });
+  }
 
   // Track last messages from PTY output per session + emit parsed output for context bar
   window.api.pty.onData((id, data) => {
