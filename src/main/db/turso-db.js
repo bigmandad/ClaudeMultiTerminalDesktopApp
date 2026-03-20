@@ -29,7 +29,7 @@ const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN || null;
 function getLocalDbPath() {
   const dir = path.join(os.homedir(), '.claude-sessions');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  return path.join(dir, 'claude-sessions.db');
+  return path.join(dir, 'turso-replica.db');
 }
 
 // ---------------------------------------------------------------------------
