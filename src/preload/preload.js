@@ -144,6 +144,15 @@ contextBridge.exposeInMainWorld('api', {
     uploadLog: () => ipcRenderer.invoke('app:uploadLog')
   },
 
+  // ── Auth (Multi-LLM Credentials) ───────────────────────
+  auth: {
+    status: () => ipcRenderer.invoke('auth:status'),
+    setApiKey: (provider, apiKey) => ipcRenderer.invoke('auth:setApiKey', { provider, apiKey }),
+    disconnect: (provider) => ipcRenderer.invoke('auth:disconnect', { provider }),
+    validate: (provider) => ipcRenderer.invoke('auth:validate', { provider }),
+    openAuthWindow: (provider) => ipcRenderer.invoke('auth:openAuthWindow', { provider }),
+  },
+
   // ── Providers (Multi-LLM) ─────────────────────────────
   providers: {
     list: () => ipcRenderer.invoke('provider:list'),

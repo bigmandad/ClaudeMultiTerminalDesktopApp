@@ -659,6 +659,34 @@ function registerIpcHandlers(ipcMain) {
 
   // ── Provider Handlers ────────────────────────────────────
 
+  // ── Auth Handlers ───────────────────────────────────────
+
+  ipcMain.handle('auth:status', async () => {
+    const { authManager } = require('./auth/auth-manager');
+    return authManager.getStatus();
+  });
+
+  ipcMain.handle('auth:setApiKey', async (event, { provider, apiKey }) => {
+    const { authManager } = require('./auth/auth-manager');
+    return authManager.setApiKey(provider, apiKey);
+  });
+
+  ipcMain.handle('auth:disconnect', async (event, { provider }) => {
+    const { authManager } = require('./auth/auth-manager');
+    return authManager.disconnect(provider);
+  });
+
+  ipcMain.handle('auth:validate', async (event, { provider }) => {
+    const { authManager } = require('./auth/auth-manager');
+    return await authManager.validate(provider);
+  });
+
+  ipcMain.handle('auth:openAuthWindow', async (event, { provider }) => {
+    const { authManager } = require('./auth/auth-manager');
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return authManager.openAuthWindow(provider, win);
+  });
+
   ipcMain.handle('provider:list', async () => {
     try {
       const { providerRegistry } = require('./providers/provider-registry');

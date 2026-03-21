@@ -155,10 +155,11 @@ app.whenReady().then(async () => {
     console.log('[Main] Plugin sync setup skipped:', err.message);
   }
 
-  // Initialize multi-LLM provider registry
+  // Initialize multi-LLM provider registry with credential store
   try {
     const { providerRegistry } = require('./providers/provider-registry');
-    providerRegistry.init({});
+    const { credentialStore } = require('./auth/credential-store');
+    providerRegistry.init({ credentialStore });
     console.log('[Main] Provider registry initialized');
   } catch (err) {
     console.log('[Main] Provider registry init skipped:', err.message);
