@@ -35,6 +35,25 @@ function createProbes(deps) {
       },
       fix: async () => {
         console.log('[Watchdog] Restarting OpenViking...');
+        // First check if openviking-server binary exists — if not, install it
+        const { resolveOvServerCmd } = require('../openviking/ov-server');
+        const resolved = resolveOvServerCmd();
+        if (resolved === 'openviking-server') {
+          // Binary not found — try to install via pip
+          console.log('[Watchdog] openviking-server not found — installing via pip...');
+          try {
+            const { execSync } = require('child_process');
+            const installCmd = process.platform === 'darwin'
+              ? '/bin/zsh -ilc "pip3 install --break-system-packages openviking"'
+              : 'pip install openviking';
+            execSync(installCmd, { encoding: 'utf8', timeout: 60000 });
+            console.log('[Watchdog] OpenViking installed successfully');
+            // Refresh PATH so resolveOvServerCmd finds it
+            if (setup && setup.refreshPath) setup.refreshPath();
+          } catch (pipErr) {
+            console.warn('[Watchdog] pip install openviking failed:', pipErr.message);
+          }
+        }
         if (ovServer && ovServer.startServer) {
           const ok = await ovServer.startServer();
           return ok ? { success: true, message: 'OpenViking restarted' } : { success: false, message: 'Failed to start' };
@@ -229,6 +248,27 @@ function createProbes(deps) {
       },
       fix: async () => {
         console.log('[Watchdog] Re-linking plugins...');
+        // First, check if the plugin source repo is cloned — if not, clone it
+        if (setup && setup.getWorkspaceRoot) {
+          const pluginRepoDir = path.join(setup.getWorkspaceRoot(), 'claude-plugins-custom');
+          if (!fs.existsSync(path.join(pluginRepoDir, '.git'))) {
+            console.log('[Watchdog] Plugin repo not found — cloning...');
+            try {
+              if (!fs.existsSync(pluginRepoDir)) fs.mkdirSync(pluginRepoDir, { recursive: true });
+              const { execSync } = require('child_process');
+              const cmd = `git clone https://github.com/bigmandad/claude-plugins-custom.git "${pluginRepoDir}"`;
+              if (process.platform === 'darwin') {
+                execSync(`/bin/zsh -ilc '${cmd}'`, { encoding: 'utf8', timeout: 60000 });
+              } else {
+                execSync(cmd, { encoding: 'utf8', timeout: 60000 });
+              }
+              console.log('[Watchdog] Plugin repo cloned successfully');
+            } catch (cloneErr) {
+              console.warn('[Watchdog] Plugin repo clone failed:', cloneErr.message);
+            }
+          }
+        }
+        // Now try to link the plugin
         if (setup && setup.configurePlugins) {
           try {
             const result = await setup.configurePlugins();
