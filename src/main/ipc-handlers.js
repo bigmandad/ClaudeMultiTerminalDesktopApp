@@ -749,6 +749,76 @@ function registerIpcHandlers(ipcMain) {
     }
   });
 
+  // ── Multi-LLM Orchestration Handlers ─────────────────────
+
+  ipcMain.handle('multiLlm:create', async (event, { sessionId, providers }) => {
+    try {
+      const { MultiLlmSession, activeSessions } = require('./orchestration/multi-llm-session');
+      const session = new MultiLlmSession(sessionId, providers, event.sender);
+      activeSessions.set(sessionId, session);
+      return { success: true, subSessions: session.getSubSessionIds() };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('multiLlm:sendToAll', async (event, { sessionId, message, systemPrompt }) => {
+    try {
+      const { activeSessions } = require('./orchestration/multi-llm-session');
+      const session = activeSessions.get(sessionId);
+      if (!session) throw new Error('No multi-LLM session: ' + sessionId);
+
+      let toolHandler = null;
+      try {
+        const { McpBridge } = require('./mcp/mcp-bridge');
+        const mcpManager = require('./mcp/mcp-manager');
+        if (mcpManager.instance) {
+          toolHandler = new McpBridge(mcpManager.instance).createToolHandler();
+        }
+      } catch (e) { /* MCP not available */ }
+
+      const results = await session.sendToAll(message, { systemPrompt, onToolCall: toolHandler });
+      return { success: true, results };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('multiLlm:synthesize', async (event, { sessionId, originalPrompt, reviewerId, reviewerModel }) => {
+    try {
+      const { activeSessions } = require('./orchestration/multi-llm-session');
+      const { PeerReview } = require('./orchestration/peer-review');
+      const session = activeSessions.get(sessionId);
+      if (!session) throw new Error('No multi-LLM session: ' + sessionId);
+
+      const responses = session.getResponses();
+      const synthesis = await PeerReview.synthesize(responses, originalPrompt, {
+        reviewerId, reviewerModel, sessionId, webContents: event.sender,
+      });
+      return { success: true, synthesis };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('multiLlm:cancel', async (event, { sessionId }) => {
+    try {
+      const { activeSessions } = require('./orchestration/multi-llm-session');
+      const session = activeSessions.get(sessionId);
+      if (session) session.cancelAll();
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  ipcMain.handle('multiLlm:destroy', async (event, { sessionId }) => {
+    try {
+      const { activeSessions } = require('./orchestration/multi-llm-session');
+      const session = activeSessions.get(sessionId);
+      if (session) { session.destroy(); activeSessions.delete(sessionId); }
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
   ipcMain.handle('provider:cancel', async (event, { sessionId, providerId }) => {
     try {
       const { providerRegistry } = require('./providers/provider-registry');

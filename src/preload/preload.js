@@ -162,6 +162,15 @@ contextBridge.exposeInMainWorld('api', {
     cancel: (opts) => ipcRenderer.invoke('provider:cancel', opts),
   },
 
+  // ── Multi-LLM Orchestration ───────────────────────────
+  multiLlm: {
+    create: (sessionId, providers) => ipcRenderer.invoke('multiLlm:create', { sessionId, providers }),
+    sendToAll: (sessionId, message, systemPrompt) => ipcRenderer.invoke('multiLlm:sendToAll', { sessionId, message, systemPrompt }),
+    synthesize: (sessionId, originalPrompt, reviewerId, reviewerModel) => ipcRenderer.invoke('multiLlm:synthesize', { sessionId, originalPrompt, reviewerId, reviewerModel }),
+    cancel: (sessionId) => ipcRenderer.invoke('multiLlm:cancel', { sessionId }),
+    destroy: (sessionId) => ipcRenderer.invoke('multiLlm:destroy', { sessionId }),
+  },
+
   clipboard: {
     write: (text) => ipcRenderer.invoke('clipboard:write', text),
     read: () => ipcRenderer.invoke('clipboard:read')
