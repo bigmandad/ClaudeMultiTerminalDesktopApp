@@ -49,6 +49,30 @@ export function initIconRail() {
     });
   }
 
+  // Upload diagnostic log button
+  const logBtn = document.getElementById('upload-log-btn');
+  if (logBtn) {
+    logBtn.addEventListener('click', async () => {
+      logBtn.classList.add('updating');
+      logBtn.title = 'Uploading log...';
+      const icon = logBtn.querySelector('.rail-icon');
+      if (icon) icon.style.animation = 'spin 1s linear infinite';
+      try {
+        const result = await window.api.app.uploadLog();
+        if (result.success) {
+          logBtn.title = `Uploaded: ${result.filename}`;
+        } else {
+          logBtn.title = `Failed: ${result.message}`;
+        }
+      } catch (err) {
+        logBtn.title = `Error: ${err.message}`;
+      }
+      logBtn.classList.remove('updating');
+      if (icon) icon.style.animation = '';
+      setTimeout(() => { logBtn.title = 'Upload Diagnostic Log to GitHub'; }, 5000);
+    });
+  }
+
   // Mute toggle is handled by notification-settings.js
 
   // Stats button

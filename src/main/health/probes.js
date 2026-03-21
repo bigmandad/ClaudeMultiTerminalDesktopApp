@@ -248,27 +248,41 @@ function createProbes(deps) {
       },
       fix: async () => {
         console.log('[Watchdog] Re-linking plugins...');
-        // First, check if the plugin source repo is cloned — if not, clone it
-        if (setup && setup.getWorkspaceRoot) {
-          const pluginRepoDir = path.join(setup.getWorkspaceRoot(), 'claude-plugins-custom');
-          if (!fs.existsSync(path.join(pluginRepoDir, '.git'))) {
-            console.log('[Watchdog] Plugin repo not found — cloning...');
-            try {
-              if (!fs.existsSync(pluginRepoDir)) fs.mkdirSync(pluginRepoDir, { recursive: true });
-              const { execSync } = require('child_process');
-              const cmd = `git clone https://github.com/bigmandad/claude-plugins-custom.git "${pluginRepoDir}"`;
-              if (process.platform === 'darwin') {
-                execSync(`/bin/zsh -ilc '${cmd}'`, { encoding: 'utf8', timeout: 60000 });
-              } else {
-                execSync(cmd, { encoding: 'utf8', timeout: 60000 });
-              }
-              console.log('[Watchdog] Plugin repo cloned successfully');
-            } catch (cloneErr) {
-              console.warn('[Watchdog] Plugin repo clone failed:', cloneErr.message);
+        const pluginRepoDir = path.join(workspace, 'claude-plugins-custom');
+
+        // 1. Clone plugin repo if missing
+        if (!fs.existsSync(path.join(pluginRepoDir, '.git'))) {
+          console.log('[Watchdog] Plugin repo not found — cloning...');
+          try {
+            if (fs.existsSync(pluginRepoDir)) {
+              // Remove empty/broken dir first
+              fs.rmSync(pluginRepoDir, { recursive: true, force: true });
             }
+            // Try gh CLI first (handles private repos with auth token)
+            const cloneUrl = 'https://github.com/bigmandad/claude-plugins-custom.git';
+            let cloneCmd;
+            try {
+              // Check if gh is available
+              execSync('gh auth status', { encoding: 'utf8', timeout: 5000, stdio: 'pipe' });
+              cloneCmd = `gh repo clone bigmandad/claude-plugins-custom "${pluginRepoDir}"`;
+            } catch {
+              // Fall back to plain git (works for public repos or if git credentials are cached)
+              cloneCmd = `git clone "${cloneUrl}" "${pluginRepoDir}"`;
+            }
+
+            if (process.platform === 'darwin') {
+              execSync(`/bin/zsh -ilc '${cloneCmd}'`, { encoding: 'utf8', timeout: 60000, stdio: 'pipe' });
+            } else {
+              execSync(cloneCmd, { encoding: 'utf8', timeout: 60000, stdio: 'pipe' });
+            }
+            console.log('[Watchdog] Plugin repo cloned successfully');
+          } catch (cloneErr) {
+            console.warn('[Watchdog] Plugin repo clone failed:', cloneErr.message);
+            return { success: false, message: `Clone failed: ${cloneErr.message.slice(0, 80)}` };
           }
         }
-        // Now try to link the plugin
+
+        // 2. Symlink and register plugin
         if (setup && setup.configurePlugins) {
           try {
             const result = await setup.configurePlugins();
@@ -279,7 +293,22 @@ function createProbes(deps) {
             return { success: false, message: e.message };
           }
         }
-        return { success: false, message: 'setup.configurePlugins not available' };
+
+        // 3. Fallback: manual symlink if setup not available
+        const pluginSource = path.join(pluginRepoDir, 'hytale-modding');
+        const pluginTarget = path.join(os.homedir(), '.claude', 'plugins', 'hytale-modding');
+        if (fs.existsSync(pluginSource) && !fs.existsSync(pluginTarget)) {
+          try {
+            fs.mkdirSync(path.dirname(pluginTarget), { recursive: true });
+            const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+            fs.symlinkSync(pluginSource, pluginTarget, linkType);
+            return { success: true, message: 'Plugin symlinked manually' };
+          } catch (e) {
+            return { success: false, message: `Symlink failed: ${e.message}` };
+          }
+        }
+
+        return { success: false, message: 'Could not resolve plugin fix' };
       }
     },
 

@@ -657,6 +657,98 @@ function registerIpcHandlers(ipcMain) {
     app.exit(0);
   });
 
+  ipcMain.handle('app:uploadLog', async () => {
+    const { execSync } = require('child_process');
+    const appDir = __dirname.includes('app.asar')
+      ? path.resolve(__dirname, '..', '..')
+      : path.resolve(__dirname, '..');
+
+    try {
+      // Collect diagnostic info
+      const lines = [];
+      lines.push(`=== Claude Sessions Diagnostic Log ===`);
+      lines.push(`Date: ${new Date().toISOString()}`);
+      lines.push(`Platform: ${process.platform} ${process.arch}`);
+      lines.push(`Node: ${process.version}`);
+      lines.push(`App Dir: ${appDir}`);
+      lines.push(`Machine: ${os.hostname()} / ${os.userInfo().username}`);
+      lines.push('');
+
+      // Git status
+      try {
+        const gitLog = execSync('git log --oneline -5', { cwd: appDir, encoding: 'utf8', timeout: 5000 });
+        lines.push('=== Recent Commits ===');
+        lines.push(gitLog.trim());
+      } catch {}
+      lines.push('');
+
+      // Watchdog health
+      try {
+        const probesModule = require('./health/probes');
+        // Just note that probes exist
+        lines.push('=== Watchdog Probes Available ===');
+      } catch {}
+
+      // Check key paths
+      lines.push('=== Path Checks ===');
+      const checks = [
+        ['DB', path.join(os.homedir(), '.claude-sessions', 'claude-sessions.db')],
+        ['Turso Replica', path.join(os.homedir(), '.claude-sessions', 'turso-replica.db')],
+        ['.env', path.join(os.homedir(), '.claude-sessions', '.env')],
+        ['OV Config', path.join(os.homedir(), '.openviking', 'ov.conf')],
+        ['Plugins', path.join(os.homedir(), '.claude', 'plugins', 'hytale-modding')],
+        ['Plugin Repo', path.join(os.homedir(), 'Documents', 'ClaudeWorkspace', 'claude-plugins-custom', '.git')],
+        ['MCP Config', path.join(os.homedir(), 'Documents', 'ClaudeWorkspace', '.mcp.json')],
+        ['KingdomsMod', path.join(os.homedir(), 'Documents', 'ClaudeWorkspace', 'ClaudeProjects', 'KingdomsMod', '.git')],
+        ['CorruptionMod', path.join(os.homedir(), 'Documents', 'ClaudeWorkspace', 'HYTALEMODWORKSHOP', 'CorruptionMod', '.git')],
+      ];
+      for (const [name, p] of checks) {
+        const exists = fs.existsSync(p);
+        let info = exists ? 'EXISTS' : 'MISSING';
+        if (exists) {
+          try {
+            const stats = fs.lstatSync(p);
+            if (stats.isSymbolicLink()) info += ` (symlink → ${fs.readlinkSync(p)})`;
+          } catch {}
+        }
+        lines.push(`  ${name}: ${info} — ${p}`);
+      }
+      lines.push('');
+
+      // Process info
+      lines.push('=== Process Env ===');
+      lines.push(`  TURSO_DATABASE_URL: ${process.env.TURSO_DATABASE_URL ? 'SET' : 'NOT SET'}`);
+      lines.push(`  TURSO_AUTH_TOKEN: ${process.env.TURSO_AUTH_TOKEN ? 'SET' : 'NOT SET'}`);
+      lines.push('');
+
+      const logContent = lines.join('\n');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `diagnostic-${timestamp}.log`;
+
+      // Write to logs dir in the app repo
+      const logsDir = path.join(appDir, 'logs');
+      if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+      const logPath = path.join(logsDir, filename);
+      fs.writeFileSync(logPath, logContent);
+
+      // Git add, commit, push
+      const run = (cmd) => {
+        if (process.platform === 'darwin') {
+          return execSync(`/bin/zsh -ilc "cd '${appDir}' && ${cmd.replace(/"/g, '\\"')}"`, { encoding: 'utf8', timeout: 30000 }).trim();
+        }
+        return execSync(cmd, { cwd: appDir, encoding: 'utf8', timeout: 30000 }).trim();
+      };
+
+      run(`git add "logs/${filename}"`);
+      run(`git commit -m "Upload diagnostic log ${timestamp}"`);
+      run('git push origin main');
+
+      return { success: true, filename, message: `Log uploaded: ${filename}` };
+    } catch (err) {
+      return { success: false, message: `Upload failed: ${err.message}` };
+    }
+  });
+
   ipcMain.handle('clipboard:write', (event, text) => {
     clipboard.writeText(text);
     return { success: true };
