@@ -262,9 +262,74 @@ async function syncOnLaunch() {
       console.warn('[Sync] Plugin sync skipped:', pluginErr.message);
     }
 
+    // Credential sync — share API keys across machines via Turso
+    await syncCredentials();
+
     console.log('[Sync] Launch sync complete');
   } catch (err) {
     console.error('[Sync] Launch sync failed:', err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Credential sync — share API keys across machines via app_state table
+// ---------------------------------------------------------------------------
+
+const SYNC_KEYS = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'TURSO_DATABASE_URL', 'TURSO_AUTH_TOKEN'];
+
+async function syncCredentials() {
+  const envPath = path.join(os.homedir(), '.claude-sessions', '.env');
+
+  // Read current local .env
+  let localEnv = {};
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx > 0) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        let val = trimmed.slice(eqIdx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        localEnv[key] = val;
+      }
+    }
+  }
+
+  // Push local keys to Turso (upsert)
+  for (const key of SYNC_KEYS) {
+    if (localEnv[key]) {
+      await tursoDB.run(
+        `INSERT INTO app_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?`,
+        [`cred:${key}`, localEnv[key], localEnv[key]]
+      );
+    }
+  }
+
+  // Pull remote keys that are missing locally
+  let changed = false;
+  for (const key of SYNC_KEYS) {
+    if (!localEnv[key]) {
+      const row = await tursoDB.get(`SELECT value FROM app_state WHERE key = ?`, [`cred:${key}`]);
+      if (row && row.value) {
+        localEnv[key] = row.value;
+        process.env[key] = row.value;
+        changed = true;
+        console.log(`[Sync] Pulled credential ${key} from cloud`);
+      }
+    }
+  }
+
+  // Write updated .env if we pulled new keys
+  if (changed) {
+    const dir = path.dirname(envPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const content = Object.entries(localEnv).map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
+    fs.writeFileSync(envPath, content, 'utf8');
+    console.log('[Sync] Updated local .env with cloud credentials');
   }
 }
 
