@@ -35,6 +35,7 @@ Desktop.ini
 # Logs
 *.log
 npm-debug.log*
+!logs/diagnostic-*.log
 
 # Windows launcher files
 start.bat

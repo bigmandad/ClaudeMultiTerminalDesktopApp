@@ -133,6 +133,7 @@ function scanMcpServers() {
   if (!config) return targets;
 
   for (const [name, serverConf] of Object.entries(config)) {
+    if (!serverConf || typeof serverConf !== 'object') continue;
     const command = serverConf.command || '';
     const args = serverConf.args || [];
 
