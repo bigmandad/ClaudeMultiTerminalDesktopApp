@@ -657,6 +657,64 @@ function registerIpcHandlers(ipcMain) {
     app.exit(0);
   });
 
+  // ── Provider Handlers ────────────────────────────────────
+
+  ipcMain.handle('provider:list', async () => {
+    try {
+      const { providerRegistry } = require('./providers/provider-registry');
+      return providerRegistry.listProviders();
+    } catch (e) { return []; }
+  });
+
+  ipcMain.handle('provider:models', async (event, providerId) => {
+    try {
+      const { providerRegistry } = require('./providers/provider-registry');
+      const provider = providerRegistry.getProvider(providerId);
+      if (!provider) return [];
+      return await provider.models();
+    } catch (e) { return []; }
+  });
+
+  ipcMain.handle('provider:allModels', async () => {
+    try {
+      const { providerRegistry } = require('./providers/provider-registry');
+      return await providerRegistry.listAllModels();
+    } catch (e) { return []; }
+  });
+
+  ipcMain.handle('provider:send', async (event, { sessionId, providerId, message, model }) => {
+    try {
+      const { providerRegistry } = require('./providers/provider-registry');
+      const { ApiPtyEmitter } = require('./providers/api-pty-emitter');
+      const provider = providerRegistry.getProvider(providerId);
+      if (!provider) throw new Error(`Unknown provider: ${providerId}`);
+
+      // Create session if not exists
+      await provider.createSession(sessionId, { model });
+
+      // Create emitter to stream output to renderer
+      const emitter = new ApiPtyEmitter(event.sender, sessionId, providerId);
+      const modelName = model || providerId;
+
+      // Stream the response
+      const generator = provider.sendMessage(sessionId, message);
+      await emitter.streamResponse(generator, modelName);
+
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('provider:cancel', async (event, { sessionId, providerId }) => {
+    try {
+      const { providerRegistry } = require('./providers/provider-registry');
+      const provider = providerRegistry.getProvider(providerId);
+      if (provider) provider.cancelGeneration(sessionId);
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
   ipcMain.handle('app:uploadLog', async () => {
     const { execSync } = require('child_process');
     // __dirname is src/main/, go up two levels to repo root

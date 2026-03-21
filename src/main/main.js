@@ -155,6 +155,15 @@ app.whenReady().then(async () => {
     console.log('[Main] Plugin sync setup skipped:', err.message);
   }
 
+  // Initialize multi-LLM provider registry
+  try {
+    const { providerRegistry } = require('./providers/provider-registry');
+    providerRegistry.init({});
+    console.log('[Main] Provider registry initialized');
+  } catch (err) {
+    console.log('[Main] Provider registry init skipped:', err.message);
+  }
+
   // Auto-start OpenViking server in background
   try {
     const ovServer = require('./openviking/ov-server');

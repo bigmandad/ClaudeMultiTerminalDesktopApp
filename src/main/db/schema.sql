@@ -1,4 +1,4 @@
--- Claude Sessions Database Schema
+-- OmniClaw Database Schema
 
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
@@ -201,3 +201,26 @@ CREATE INDEX IF NOT EXISTS idx_cli_sessions_machine ON cli_sessions(machine_id);
 CREATE INDEX IF NOT EXISTS idx_cli_sessions_uuid ON cli_sessions(session_uuid);
 CREATE INDEX IF NOT EXISTS idx_plugin_sync_machine ON plugin_sync(machine_id);
 CREATE INDEX IF NOT EXISTS idx_machines_last_seen ON machines(last_seen);
+
+-- ── Multi-LLM Provider Support ──────────────────────────
+-- Add provider column to sessions (safe to re-run — ALTER TABLE IF NOT EXISTS not in SQLite,
+-- so we use a separate migration approach in database.js)
+
+CREATE TABLE IF NOT EXISTS credentials (
+  provider TEXT PRIMARY KEY,
+  encrypted_data BLOB NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS provider_sessions (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'claude',
+  model TEXT,
+  messages TEXT,  -- JSON conversation history for API providers
+  status TEXT DEFAULT 'active',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_sessions_session ON provider_sessions(session_id);

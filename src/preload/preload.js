@@ -144,6 +144,15 @@ contextBridge.exposeInMainWorld('api', {
     uploadLog: () => ipcRenderer.invoke('app:uploadLog')
   },
 
+  // ── Providers (Multi-LLM) ─────────────────────────────
+  providers: {
+    list: () => ipcRenderer.invoke('provider:list'),
+    models: (providerId) => ipcRenderer.invoke('provider:models', providerId),
+    allModels: () => ipcRenderer.invoke('provider:allModels'),
+    send: (opts) => ipcRenderer.invoke('provider:send', opts),
+    cancel: (opts) => ipcRenderer.invoke('provider:cancel', opts),
+  },
+
   clipboard: {
     write: (text) => ipcRenderer.invoke('clipboard:write', text),
     read: () => ipcRenderer.invoke('clipboard:read')
