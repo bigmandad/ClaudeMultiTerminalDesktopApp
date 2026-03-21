@@ -48,7 +48,14 @@ function fixMacOSPath() {
       process.env.PATH = shellPath;
     }
   } catch (e) {
-    console.warn('[PATH] Could not resolve macOS shell PATH:', e.message);
+    console.warn('[PATH] Could not resolve macOS shell PATH, using fallback:', e.message);
+    // Fallback: prepend common Homebrew paths
+    const fallback = ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin'];
+    const current = process.env.PATH || '';
+    const missing = fallback.filter(p => !current.includes(p));
+    if (missing.length > 0) {
+      process.env.PATH = missing.join(':') + ':' + current;
+    }
   }
 }
 fixMacOSPath();

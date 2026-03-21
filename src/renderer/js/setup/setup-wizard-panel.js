@@ -1,12 +1,34 @@
 // ── Setup Wizard Panel — First-Run UI ─────────────────────
 
-const STEPS = ['welcome', 'dependencies', 'install', 'configure', 'models', 'complete'];
+const STEPS = ['welcome', 'dependencies', 'install', 'configure', 'models', 'verify', 'complete'];
 
 let currentStep = 0;
 let depResults = [];
 let installLog = {};
 
-function createWizardOverlay() {
+async function saveAndAdvance(stepName, nextStepIndex) {
+  try {
+    const state = await window.api.setup.getState();
+    if (!state.completedSteps.includes(stepName)) {
+      state.completedSteps.push(stepName);
+    }
+    state.currentStep = STEPS[nextStepIndex];
+    await window.api.setup.saveState(state);
+  } catch {}
+  currentStep = nextStepIndex;
+  renderStep();
+}
+
+function goToStep(idx) {
+  currentStep = idx;
+  renderStep();
+}
+
+function findPrevStep() {
+  return Math.max(0, currentStep - 1);
+}
+
+async function createWizardOverlay() {
   const overlay = document.createElement('div');
   overlay.id = 'setup-wizard-overlay';
   overlay.innerHTML = `
@@ -24,6 +46,19 @@ function createWizardOverlay() {
   `;
   document.body.appendChild(overlay);
   injectStyles();
+
+  // Resume support — pick up where we left off
+  try {
+    const state = await window.api.setup.getState();
+    if (state.completedSteps && state.completedSteps.length > 0) {
+      const lastCompleted = state.completedSteps[state.completedSteps.length - 1];
+      const lastIdx = STEPS.indexOf(lastCompleted);
+      if (lastIdx >= 0 && lastIdx < STEPS.length - 1) {
+        currentStep = lastIdx + 1;
+      }
+    }
+  } catch {}
+
   renderStep();
 }
 
@@ -44,11 +79,12 @@ function renderStep() {
     case 'install': renderInstall(body, footer); break;
     case 'configure': renderConfigure(body, footer); break;
     case 'models': renderModels(body, footer); break;
+    case 'verify': renderVerify(body, footer); break;
     case 'complete': renderComplete(body, footer); break;
   }
 }
 
-// ── Step: Welcome ─────────────────────────────────────────
+// ── Step 1: Welcome ──────────────────────────────────────
 
 function renderWelcome(body, footer) {
   body.innerHTML = `
@@ -66,18 +102,20 @@ function renderWelcome(body, footer) {
         The setup process will detect Git, Node.js, Python, Java 25, Ollama,
         Claude CLI, and OpenViking. Missing components can be installed automatically.
       </p>
+      <p class="setup-text setup-text-dim">
+        Setup is resumable — if you close this window, you can pick up where you left off next time.
+      </p>
     </div>
   `;
   footer.innerHTML = `
     <button class="btn btn-primary setup-btn" id="setup-next-btn">Begin System Check</button>
   `;
   document.getElementById('setup-next-btn').addEventListener('click', () => {
-    currentStep = 1;
-    renderStep();
+    saveAndAdvance('welcome', 1);
   });
 }
 
-// ── Step: Dependencies ────────────────────────────────────
+// ── Step 2: Dependencies ─────────────────────────────────
 
 async function renderDependencies(body, footer) {
   body.innerHTML = `
@@ -121,10 +159,10 @@ async function renderDependencies(body, footer) {
     body.querySelector('.setup-text').textContent = 'All dependencies found!';
     footer.innerHTML = `
       <button class="btn btn-secondary setup-btn" id="setup-back-btn">Back</button>
-      <button class="btn btn-primary setup-btn" id="setup-next-btn">Continue to Configuration</button>
+      <button class="btn btn-primary setup-btn" id="setup-next-btn">Continue to Cloud Sync</button>
     `;
-    document.getElementById('setup-back-btn').addEventListener('click', () => { currentStep = 0; renderStep(); });
-    document.getElementById('setup-next-btn').addEventListener('click', () => { currentStep = 3; renderStep(); });
+    document.getElementById('setup-back-btn').addEventListener('click', () => goToStep(0));
+    document.getElementById('setup-next-btn').addEventListener('click', () => saveAndAdvance('dependencies', 3));
   } else {
     body.querySelector('.setup-text').textContent = `${missing.length} missing dependenc${missing.length === 1 ? 'y' : 'ies'} detected.`;
     footer.innerHTML = `
@@ -132,13 +170,13 @@ async function renderDependencies(body, footer) {
       <button class="btn btn-primary setup-btn" id="setup-install-btn">Install Missing (${missing.length})</button>
       <button class="btn btn-secondary setup-btn" id="setup-skip-btn">Skip</button>
     `;
-    document.getElementById('setup-back-btn').addEventListener('click', () => { currentStep = 0; renderStep(); });
-    document.getElementById('setup-install-btn').addEventListener('click', () => { currentStep = 2; renderStep(); });
-    document.getElementById('setup-skip-btn').addEventListener('click', () => { currentStep = 3; renderStep(); });
+    document.getElementById('setup-back-btn').addEventListener('click', () => goToStep(0));
+    document.getElementById('setup-install-btn').addEventListener('click', () => goToStep(2));
+    document.getElementById('setup-skip-btn').addEventListener('click', () => saveAndAdvance('dependencies', 3));
   }
 }
 
-// ── Step: Install ─────────────────────────────────────────
+// ── Step 3: Install ──────────────────────────────────────
 
 async function renderInstall(body, footer) {
   const missing = depResults.filter(d => !d.found && d.installCommand);
@@ -188,6 +226,8 @@ async function renderInstall(body, footer) {
 
     try {
       await window.api.setup.installDep(dep.name, dep.installCommand);
+      // Refresh PATH so newly installed binaries are found
+      try { await window.api.setup.refreshPath(); } catch {}
       if (statusEl) {
         statusEl.textContent = '\u2713';
         statusEl.className = 'setup-install-status success';
@@ -208,91 +248,118 @@ async function renderInstall(body, footer) {
   if (failures.length === 0) {
     body.querySelector('.setup-text').textContent = 'All dependencies installed successfully!';
     footer.innerHTML = `
-      <button class="btn btn-primary setup-btn" id="setup-next-btn">Continue to Configuration</button>
+      <button class="btn btn-primary setup-btn" id="setup-next-btn">Continue to Cloud Sync</button>
     `;
-    document.getElementById('setup-next-btn').addEventListener('click', () => { currentStep = 3; renderStep(); });
+    document.getElementById('setup-next-btn').addEventListener('click', () => saveAndAdvance('install', 3));
   } else {
     body.querySelector('.setup-text').textContent = `${failures.length} installation${failures.length === 1 ? '' : 's'} failed. You can retry or skip.`;
     footer.innerHTML = `
       <button class="btn btn-secondary setup-btn" id="setup-retry-btn">Retry Failed</button>
       <button class="btn btn-primary setup-btn" id="setup-skip-btn">Continue Anyway</button>
     `;
-    document.getElementById('setup-retry-btn').addEventListener('click', () => { currentStep = 1; renderStep(); });
-    document.getElementById('setup-skip-btn').addEventListener('click', () => { currentStep = 3; renderStep(); });
+    document.getElementById('setup-retry-btn').addEventListener('click', () => goToStep(1));
+    document.getElementById('setup-skip-btn').addEventListener('click', () => saveAndAdvance('install', 3));
   }
 }
 
-// ── Step: Configure ───────────────────────────────────────
+// ── Step 4: Configure ────────────────────────────────────
 
 async function renderConfigure(body, footer) {
-  let hytalePath = '';
-  try {
-    hytalePath = await window.api.setup.detectHytalePath() || '';
-  } catch { /* ignore */ }
+  const actions = [
+    { id: 'start-ollama', label: 'Start Ollama Service', fn: () => window.api.setup.startOllama() },
+    { id: 'gen-config', label: 'Generate OpenViking Config', fn: () => window.api.setup.configure() },
+    { id: 'clone-repos', label: 'Clone Project Repositories', fn: () => window.api.setup.cloneRepos() },
+    { id: 'config-plugins', label: 'Configure Plugins', fn: () => window.api.setup.configurePlugins() },
+  ];
 
   body.innerHTML = `
     <div class="setup-section">
       <h2 class="setup-title">Configure Workspace</h2>
-      <p class="setup-text">Set up OpenViking configuration and MCP server configs.</p>
-      <div class="setup-config-list">
-        <div class="setup-config-item">
-          <span class="setup-config-icon">\u2699</span>
-          <div class="setup-config-detail">
-            <div class="setup-config-name">OpenViking Config</div>
-            <div class="setup-config-desc">~/.openviking/ov.conf — Embedding server, storage paths</div>
+      <p class="setup-text">Setting up your development environment...</p>
+      <div class="setup-action-list" id="setup-action-list">
+        ${actions.map(a => `
+          <div class="setup-action-row" id="action-row-${a.id}">
+            <span class="setup-action-icon pending" id="action-icon-${a.id}">\u25CB</span>
+            <span class="setup-action-name">${escHtml(a.label)}</span>
+            <span class="setup-action-detail" id="action-detail-${a.id}">Waiting</span>
           </div>
-        </div>
-        <div class="setup-config-item">
-          <span class="setup-config-icon">\u2699</span>
-          <div class="setup-config-detail">
-            <div class="setup-config-name">MCP Server Config</div>
-            <div class="setup-config-desc">.mcp.json — Generated from template if available</div>
-          </div>
-        </div>
-        ${hytalePath ? `
-        <div class="setup-config-item">
-          <span class="setup-config-icon">\u2713</span>
-          <div class="setup-config-detail">
-            <div class="setup-config-name">Hytale Game Path Detected</div>
-            <div class="setup-config-desc">${escHtml(hytalePath)}</div>
-          </div>
-        </div>
-        ` : ''}
+        `).join('')}
       </div>
-      <div class="setup-config-status" id="setup-config-status"></div>
     </div>
   `;
   footer.innerHTML = `
     <button class="btn btn-secondary setup-btn" id="setup-back-btn">Back</button>
-    <button class="btn btn-primary setup-btn" id="setup-configure-btn">Apply Configuration</button>
+    <button class="btn btn-primary setup-btn" id="setup-run-btn">Run Configuration</button>
     <button class="btn btn-secondary setup-btn" id="setup-skip-btn">Skip</button>
   `;
 
-  document.getElementById('setup-back-btn').addEventListener('click', () => { currentStep = 1; renderStep(); });
-  document.getElementById('setup-skip-btn').addEventListener('click', () => { currentStep = 4; renderStep(); });
-  document.getElementById('setup-configure-btn').addEventListener('click', async () => {
-    const statusEl = document.getElementById('setup-config-status');
-    statusEl.innerHTML = '<div class="setup-spinner-row"><div class="setup-spinner"></div> Applying configuration...</div>';
+  document.getElementById('setup-back-btn').addEventListener('click', () => goToStep(findPrevStep()));
+  document.getElementById('setup-skip-btn').addEventListener('click', () => saveAndAdvance('configure', 4));
 
+  document.getElementById('setup-run-btn').addEventListener('click', async () => {
+    // Disable buttons while running
+    footer.innerHTML = `<div class="setup-text setup-text-dim">Running configuration tasks...</div>`;
+
+    let failures = 0;
+
+    // Listen for clone progress if available
+    let cloneCleanup = null;
     try {
-      // Use the app's own directory as workspace root for template generation
-      const workspaceRoot = window.location.href.includes('ClaudeMultiTerminalDesktopApp')
-        ? window.location.href.split('ClaudeMultiTerminalDesktopApp')[0] + 'ClaudeMultiTerminalDesktopApp'
-        : '';
-      await window.api.setup.configure({ workspaceRoot: workspaceRoot || '.' });
-      statusEl.innerHTML = '<div class="setup-success-msg">\u2713 Configuration applied successfully!</div>';
+      cloneCleanup = window.api.setup.onCloneProgress && window.api.setup.onCloneProgress((data) => {
+        const detailEl = document.getElementById('action-detail-clone-repos');
+        if (detailEl) {
+          detailEl.textContent = (data.output || data.repo || '').slice(0, 60);
+        }
+      });
+    } catch {}
 
-      footer.innerHTML = `
-        <button class="btn btn-primary setup-btn" id="setup-next-btn">Continue to AI Models</button>
-      `;
-      document.getElementById('setup-next-btn').addEventListener('click', () => { currentStep = 4; renderStep(); });
-    } catch (err) {
-      statusEl.innerHTML = `<div class="setup-error">\u2717 Configuration failed: ${escHtml(err.message)}</div>`;
+    for (const action of actions) {
+      const iconEl = document.getElementById(`action-icon-${action.id}`);
+      const detailEl = document.getElementById(`action-detail-${action.id}`);
+
+      if (iconEl) {
+        iconEl.textContent = '\u25D4';
+        iconEl.className = 'setup-action-icon running';
+      }
+      if (detailEl) detailEl.textContent = 'Running...';
+
+      try {
+        await action.fn();
+        if (iconEl) {
+          iconEl.textContent = '\u2713';
+          iconEl.className = 'setup-action-icon success';
+        }
+        if (detailEl) detailEl.textContent = 'Done';
+      } catch (err) {
+        failures++;
+        if (iconEl) {
+          iconEl.textContent = '\u2717';
+          iconEl.className = 'setup-action-icon failed';
+        }
+        if (detailEl) detailEl.textContent = err.message ? err.message.slice(0, 80) : 'Failed';
+      }
     }
+
+    if (cloneCleanup && typeof cloneCleanup === 'function') {
+      try { cloneCleanup(); } catch {}
+    }
+
+    if (failures === 0) {
+      body.querySelector('.setup-text').textContent = 'All configuration tasks completed!';
+    } else {
+      body.querySelector('.setup-text').textContent = `${failures} task(s) had issues. You can continue or go back.`;
+    }
+
+    footer.innerHTML = `
+      <button class="btn btn-secondary setup-btn" id="setup-back-btn">Back</button>
+      <button class="btn btn-primary setup-btn" id="setup-next-btn">Continue to Models</button>
+    `;
+    document.getElementById('setup-back-btn').addEventListener('click', () => goToStep(findPrevStep()));
+    document.getElementById('setup-next-btn').addEventListener('click', () => saveAndAdvance('configure', 4));
   });
 }
 
-// ── Step: Models ──────────────────────────────────────────
+// ── Step 6: Models ───────────────────────────────────────
 
 async function renderModels(body, footer) {
   const models = [
@@ -326,10 +393,15 @@ async function renderModels(body, footer) {
     <button class="btn btn-secondary setup-btn" id="setup-skip-btn">Skip</button>
   `;
 
-  document.getElementById('setup-back-btn').addEventListener('click', () => { currentStep = 3; renderStep(); });
-  document.getElementById('setup-skip-btn').addEventListener('click', () => { currentStep = 5; renderStep(); });
+  document.getElementById('setup-back-btn').addEventListener('click', () => goToStep(3));
+  document.getElementById('setup-skip-btn').addEventListener('click', () => saveAndAdvance('models', 5));
   document.getElementById('setup-pull-btn').addEventListener('click', async () => {
     footer.innerHTML = `<div class="setup-text setup-text-dim">Pulling models, please wait...</div>`;
+
+    // Make sure Ollama is running before pulling
+    try {
+      await window.api.setup.startOllama();
+    } catch {}
 
     const modelProgressCleanup = window.api.setup.onModelProgress((data) => {
       // Show progress for active model
@@ -376,15 +448,88 @@ async function renderModels(body, footer) {
     }
 
     footer.innerHTML = `
-      <button class="btn btn-primary setup-btn" id="setup-next-btn">Finish Setup</button>
+      <button class="btn btn-primary setup-btn" id="setup-next-btn">Continue to Verification</button>
     `;
-    document.getElementById('setup-next-btn').addEventListener('click', () => { currentStep = 5; renderStep(); });
+    document.getElementById('setup-next-btn').addEventListener('click', () => saveAndAdvance('models', 5));
   });
 }
 
-// ── Step: Complete ────────────────────────────────────────
+// ── Step 7: Verify ───────────────────────────────────────
+
+async function renderVerify(body, footer) {
+  body.innerHTML = `
+    <div class="setup-section">
+      <h2 class="setup-title">System Verification</h2>
+      <p class="setup-text">Checking that all systems are operational...</p>
+      <div class="setup-verify-list" id="verify-list">
+        <div class="setup-spinner-row"><div class="setup-spinner"></div> Running checks...</div>
+      </div>
+    </div>
+  `;
+  footer.innerHTML = '';
+
+  const results = await window.api.setup.verify();
+  const listEl = document.getElementById('verify-list');
+
+  const checks = [
+    { key: 'ollama', label: 'Ollama AI Engine' },
+    { key: 'openviking', label: 'OpenViking Knowledge Base' },
+    { key: 'database', label: 'Session Database' },
+    { key: 'turso', label: 'Cloud Sync (Turso)' },
+    { key: 'mcpConfig', label: 'MCP Server Config' },
+    { key: 'plugins', label: 'Modding Plugins' },
+    { key: 'models', label: 'AI Models' },
+  ];
+
+  listEl.innerHTML = checks.map(c => {
+    const r = results[c.key] || { pass: false, detail: 'Not checked' };
+    const icon = r.pass ? '\u2713' : (r.skipped ? '\u2014' : '\u2717');
+    const cls = r.pass ? 'success' : (r.skipped ? 'skipped' : 'failed');
+    return `
+      <div class="setup-verify-row">
+        <span class="setup-verify-icon ${cls}">${icon}</span>
+        <span class="setup-verify-name">${escHtml(c.label)}</span>
+        <span class="setup-verify-detail">${escHtml(r.detail)}</span>
+      </div>
+    `;
+  }).join('');
+
+  const allPassed = Object.values(results).every(r => r.pass || r.skipped);
+  const failCount = Object.values(results).filter(r => !r.pass && !r.skipped).length;
+
+  if (allPassed) {
+    body.querySelector('.setup-text').textContent = 'All systems are operational!';
+  } else {
+    body.querySelector('.setup-text').textContent = `${failCount} check(s) need attention. You can continue or retry.`;
+  }
+
+  footer.innerHTML = `
+    <button class="btn btn-secondary setup-btn" id="setup-retry-btn">Retry</button>
+    <button class="btn btn-primary setup-btn" id="setup-next-btn">${allPassed ? 'Finish Setup' : 'Continue Anyway'}</button>
+  `;
+  document.getElementById('setup-retry-btn').addEventListener('click', () => renderVerify(body, footer));
+  document.getElementById('setup-next-btn').addEventListener('click', () => saveAndAdvance('verify', 6));
+}
+
+// ── Step 8: Complete ─────────────────────────────────────
 
 async function renderComplete(body, footer) {
+  // Gather summary info
+  let cloudSyncStatus = 'Auto-configured';
+  let verifyResults = null;
+  try {
+    const vr = await window.api.setup.verify();
+    verifyResults = vr;
+    if (vr.turso && vr.turso.pass) {
+      cloudSyncStatus = 'Connected';
+    } else if (vr.turso && vr.turso.skipped) {
+      cloudSyncStatus = 'Local Only';
+    }
+  } catch {}
+
+  const depsFound = depResults.filter(d => d.found).length;
+  const depsTotal = depResults.length;
+
   body.innerHTML = `
     <div class="setup-section setup-complete-section">
       <div class="setup-complete-icon">\u2713</div>
@@ -393,25 +538,44 @@ async function renderComplete(body, footer) {
         Your environment is configured and ready to go.
         Claude Sessions will now start normally.
       </p>
-      <div class="setup-summary" id="setup-summary"></div>
+      <div class="setup-summary" id="setup-summary">
+        ${depsTotal > 0 ? `
+        <div class="setup-info-row">
+          <span class="setup-info-label">Dependencies</span>
+          <span class="setup-info-value">${depsFound}/${depsTotal} available</span>
+        </div>
+        ` : ''}
+        <div class="setup-info-row">
+          <span class="setup-info-label">Cloud Sync</span>
+          <span class="setup-info-value">${escHtml(cloudSyncStatus)}</span>
+        </div>
+        ${verifyResults ? `
+        <div class="setup-info-row">
+          <span class="setup-info-label">Verification</span>
+          <span class="setup-info-value">${Object.values(verifyResults).filter(r => r.pass).length}/${Object.values(verifyResults).length} checks passed</span>
+        </div>
+        ` : ''}
+      </div>
+      <span class="setup-rerun-link" id="setup-rerun-link">Re-run Setup Wizard</span>
     </div>
   `;
-
-  // Show summary of what was set up
-  const summaryEl = document.getElementById('setup-summary');
-  if (depResults.length > 0) {
-    const found = depResults.filter(d => d.found).length;
-    summaryEl.innerHTML = `
-      <div class="setup-info-row">
-        <span class="setup-info-label">Dependencies</span>
-        <span class="setup-info-value">${found}/${depResults.length} available</span>
-      </div>
-    `;
-  }
 
   footer.innerHTML = `
     <button class="btn btn-primary setup-btn setup-btn-large" id="setup-finish-btn">Launch Claude Sessions</button>
   `;
+
+  document.getElementById('setup-rerun-link').addEventListener('click', async () => {
+    try {
+      const state = await window.api.setup.getState();
+      state.completedSteps = [];
+      state.currentStep = 'welcome';
+      await window.api.setup.saveState(state);
+    } catch {}
+    currentStep = 0;
+    depResults = [];
+    installLog = {};
+    renderStep();
+  });
 
   document.getElementById('setup-finish-btn').addEventListener('click', async () => {
     try {
@@ -856,6 +1020,178 @@ function injectStyles() {
 
     @keyframes setup-spin {
       to { transform: rotate(360deg); }
+    }
+
+    /* Form inputs */
+    .setup-form {
+      background: var(--bg-deep, #161310);
+      border: 1px solid var(--border-dim, #2a2520);
+      border-radius: var(--radius-sm, 4px);
+      padding: 16px 14px;
+      margin-bottom: 14px;
+    }
+
+    .setup-form-group {
+      margin-bottom: 12px;
+    }
+
+    .setup-form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .setup-input-label {
+      display: block;
+      font-size: 11px;
+      color: var(--cream-dim, #a09080);
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    .setup-input {
+      width: 100%;
+      padding: 8px 10px;
+      background: var(--bg, #1a1714);
+      border: 1px solid var(--border, #3a3330);
+      border-radius: var(--radius-sm, 4px);
+      color: var(--cream, #e8ddd0);
+      font-family: var(--font-mono, 'Fira Code', monospace);
+      font-size: 12px;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .setup-input:focus {
+      border-color: var(--orange, #d4845a);
+      box-shadow: 0 0 0 1px rgba(212, 132, 90, 0.3);
+    }
+
+    .setup-input::placeholder {
+      color: var(--cream-faint, #6a5f55);
+    }
+
+    .setup-test-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .setup-test-btn {
+      min-width: 120px;
+      font-size: 11px;
+    }
+
+    .setup-test-result {
+      font-size: 11px;
+    }
+
+    .setup-test-result.success { color: var(--green, #7ab87a); }
+    .setup-test-result.error { color: var(--red, #c07070); }
+    .setup-test-result.pending { color: var(--yellow, #c8a96a); }
+
+    .setup-link {
+      color: var(--orange, #d4845a);
+      text-decoration: underline;
+    }
+
+    /* Verify list */
+    .setup-verify-list {
+      background: var(--bg-deep, #161310);
+      border: 1px solid var(--border-dim, #2a2520);
+      border-radius: var(--radius-sm, 4px);
+      padding: 8px 0;
+      margin-bottom: 14px;
+    }
+
+    .setup-verify-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      font-size: 12px;
+    }
+
+    .setup-verify-row:not(:last-child) {
+      border-bottom: 1px solid var(--border-dim, #2a2520);
+    }
+
+    .setup-verify-icon {
+      width: 20px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .setup-verify-icon.success { color: var(--green, #7ab87a); }
+    .setup-verify-icon.failed { color: var(--red, #c07070); }
+    .setup-verify-icon.skipped { color: var(--cream-faint, #6a5f55); }
+
+    .setup-verify-name {
+      flex: 0 0 180px;
+      font-weight: 500;
+      color: var(--cream, #e8ddd0);
+    }
+
+    .setup-verify-detail {
+      flex: 1;
+      color: var(--cream-dim, #a09080);
+      font-size: 11px;
+      text-align: right;
+    }
+
+    /* Configure checklist */
+    .setup-action-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .setup-action-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--bg-deep, #161310);
+      border: 1px solid var(--border-dim, #2a2520);
+      border-radius: var(--radius-sm, 4px);
+      font-size: 12px;
+    }
+
+    .setup-action-icon {
+      width: 20px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .setup-action-icon.pending { color: var(--cream-faint, #6a5f55); }
+    .setup-action-icon.running { color: var(--yellow, #c8a96a); }
+    .setup-action-icon.success { color: var(--green, #7ab87a); }
+    .setup-action-icon.failed { color: var(--red, #c07070); }
+
+    .setup-action-name {
+      flex: 1;
+      color: var(--cream, #e8ddd0);
+      font-weight: 500;
+    }
+
+    .setup-action-detail {
+      font-size: 11px;
+      color: var(--cream-dim, #a09080);
+    }
+
+    /* Re-run setup link */
+    .setup-rerun-link {
+      display: inline-block;
+      margin-top: 12px;
+      font-size: 10px;
+      color: var(--cream-faint, #6a5f55);
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .setup-rerun-link:hover {
+      color: var(--cream-dim, #a09080);
     }
   `;
   document.head.appendChild(style);

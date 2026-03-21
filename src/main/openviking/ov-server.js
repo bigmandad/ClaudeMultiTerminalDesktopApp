@@ -42,8 +42,14 @@ function resolveOvServerCmd() {
     const candidates = [
       path.join(os.homedir(), '.local', 'bin', 'openviking-server'),
       '/opt/homebrew/bin/openviking-server',
-      '/usr/local/bin/openviking-server'
+      '/usr/local/bin/openviking-server',
     ];
+    // Also check pip --user install locations on macOS (~/Library/Python/3.X/bin/)
+    if (process.platform === 'darwin') {
+      for (const ver of ['3.14', '3.13', '3.12', '3.11', '3.10']) {
+        candidates.push(path.join(os.homedir(), 'Library', 'Python', ver, 'bin', 'openviking-server'));
+      }
+    }
     for (const c of candidates) {
       if (fs.existsSync(c)) return c;
     }

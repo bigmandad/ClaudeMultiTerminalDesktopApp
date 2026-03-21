@@ -249,6 +249,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // ── Setup Wizard ────────────────────────────────────────
   setup: {
+    // Legacy / existing
     isComplete: () => ipcRenderer.invoke('setup:isComplete'),
     checkDeps: () => ipcRenderer.invoke('setup:checkDeps'),
     installDep: (name, command) => ipcRenderer.invoke('setup:installDep', { name, command }),
@@ -266,7 +267,31 @@ contextBridge.exposeInMainWorld('api', {
       const handler = (_event, data) => callback(data);
       ipcRenderer.on('setup:modelProgress', handler);
       return () => ipcRenderer.removeListener('setup:modelProgress', handler);
-    }
+    },
+    // New: Resumable state
+    getState: () => ipcRenderer.invoke('setup:getState'),
+    saveState: (update) => ipcRenderer.invoke('setup:saveState', update),
+    // New: Workspace root
+    getWorkspaceRoot: () => ipcRenderer.invoke('setup:getWorkspaceRoot'),
+    // New: Turso credentials
+    saveTurso: (url, token) => ipcRenderer.invoke('setup:saveTurso', { url, token }),
+    testTurso: (url, token) => ipcRenderer.invoke('setup:testTurso', { url, token }),
+    // New: Ollama service
+    startOllama: () => ipcRenderer.invoke('setup:startOllama'),
+    checkOllama: () => ipcRenderer.invoke('setup:checkOllama'),
+    // New: Repo cloning
+    cloneRepos: () => ipcRenderer.invoke('setup:cloneRepos'),
+    onCloneProgress: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('setup:cloneProgress', handler);
+      return () => ipcRenderer.removeListener('setup:cloneProgress', handler);
+    },
+    // New: Plugin configuration
+    configurePlugins: () => ipcRenderer.invoke('setup:configurePlugins'),
+    // New: PATH refresh
+    refreshPath: () => ipcRenderer.invoke('setup:refreshPath'),
+    // New: Comprehensive verification
+    verify: () => ipcRenderer.invoke('setup:verify'),
   },
 
   // ── Plugin Sync (cross-machine plugin synchronisation) ──
