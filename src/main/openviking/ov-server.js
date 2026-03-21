@@ -32,10 +32,24 @@ function resolveOllamaPath() {
  * Resolve the openviking-server binary path cross-platform.
  */
 function resolveOvServerCmd() {
+  // Try to find via full shell PATH first (most reliable on macOS)
+  if (process.platform !== 'win32') {
+    try {
+      const shell = process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash';
+      const resolved = execSync(`${shell} -ilc "which openviking-server"`, { encoding: 'utf8', timeout: 5000 }).trim();
+      if (resolved && fs.existsSync(resolved)) return resolved;
+    } catch (_) { /* continue to manual search */ }
+  }
+
   if (process.platform === 'win32') {
-    const pythonVersions = ['Python312', 'Python311', 'Python310', 'Python313'];
+    const pythonVersions = ['Python312', 'Python311', 'Python310', 'Python313', 'Python314'];
     for (const ver of pythonVersions) {
       const candidate = path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', ver, 'Scripts', 'openviking-server.exe');
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    // Also check pip --user on Windows
+    for (const ver of pythonVersions) {
+      const candidate = path.join(os.homedir(), 'AppData', 'Roaming', 'Python', ver, 'Scripts', 'openviking-server.exe');
       if (fs.existsSync(candidate)) return candidate;
     }
   } else {
@@ -44,15 +58,21 @@ function resolveOvServerCmd() {
       '/opt/homebrew/bin/openviking-server',
       '/usr/local/bin/openviking-server',
     ];
-    // Also check pip --user install locations on macOS (~/Library/Python/3.X/bin/)
+    // pip --user install locations on macOS (~/Library/Python/3.X/bin/)
     if (process.platform === 'darwin') {
       for (const ver of ['3.14', '3.13', '3.12', '3.11', '3.10']) {
         candidates.push(path.join(os.homedir(), 'Library', 'Python', ver, 'bin', 'openviking-server'));
       }
     }
+    // Also check Homebrew Python's bin dirs
+    for (const ver of ['3.14', '3.13', '3.12', '3.11', '3.10']) {
+      candidates.push(`/opt/homebrew/lib/python${ver}/site-packages/bin/openviking-server`);
+      candidates.push(`/opt/homebrew/opt/python@${ver}/bin/openviking-server`);
+    }
     for (const c of candidates) {
       if (fs.existsSync(c)) return c;
     }
+    // Last resort: plain which (Electron's minimal PATH)
     try {
       return execSync('which openviking-server', { encoding: 'utf8', timeout: 3000 }).trim();
     } catch (_) { /* not found */ }

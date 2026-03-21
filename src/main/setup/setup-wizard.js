@@ -454,29 +454,90 @@ async function cloneRepos(onProgress) {
 // ── Plugin configuration ──────────────────────────────────
 
 async function configurePlugins() {
-  // Check installed_plugins.json for already-installed plugins
-  const installedPluginsPath = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
-  const plugins = [];
+  const workspace = getWorkspaceRoot();
+  const pluginSourceDir = path.join(workspace, 'claude-plugins-custom', 'hytale-modding');
+  const pluginJsonPath = path.join(pluginSourceDir, '.claude-plugin', 'plugin.json');
+  const claudePluginsDir = path.join(os.homedir(), '.claude', 'plugins');
+  const installedPluginsPath = path.join(claudePluginsDir, 'installed_plugins.json');
 
+  // 1. Check if already installed
+  let alreadyInstalled = false;
   try {
     if (fs.existsSync(installedPluginsPath)) {
       const installed = JSON.parse(fs.readFileSync(installedPluginsPath, 'utf8'));
       const pluginKeys = Object.keys(installed.plugins || {});
-      for (const key of pluginKeys) {
-        plugins.push(key.split('@')[0]); // e.g. 'hytale-modding' from 'hytale-modding@local-desktop-app-uploads'
-      }
+      alreadyInstalled = pluginKeys.some(k => k.startsWith('hytale-modding'));
     }
   } catch {}
 
-  const hytaleFound = plugins.includes('hytale-modding');
+  if (alreadyInstalled) {
+    return { success: true, plugins: ['hytale-modding'], message: 'hytale-modding plugin already installed' };
+  }
 
-  return {
-    success: true,
-    plugins,
-    message: hytaleFound
-      ? `${plugins.length} plugin(s) installed including hytale-modding`
-      : `${plugins.length} plugin(s) installed (hytale-modding not found — install via Claude CLI)`
-  };
+  // 2. Check if plugin source exists (cloned from repo)
+  if (!fs.existsSync(pluginJsonPath)) {
+    return {
+      success: false,
+      plugins: [],
+      message: 'Plugin directory missing — clone repos first',
+      detail: `Expected: ${pluginSourceDir}`
+    };
+  }
+
+  // 3. Install the plugin by creating a symlink in ~/.claude/plugins/
+  const targetDir = path.join(claudePluginsDir, 'hytale-modding');
+  try {
+    if (!fs.existsSync(claudePluginsDir)) fs.mkdirSync(claudePluginsDir, { recursive: true });
+
+    // Remove existing symlink/dir if broken
+    if (fs.existsSync(targetDir)) {
+      const stats = fs.lstatSync(targetDir);
+      if (stats.isSymbolicLink()) fs.unlinkSync(targetDir);
+    }
+
+    // Create symlink (junction on Windows, dir symlink on macOS/Linux)
+    if (!fs.existsSync(targetDir)) {
+      const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+      fs.symlinkSync(pluginSourceDir, targetDir, linkType);
+    }
+
+    // 4. Register in installed_plugins.json
+    let installed = { plugins: {} };
+    try {
+      if (fs.existsSync(installedPluginsPath)) {
+        installed = JSON.parse(fs.readFileSync(installedPluginsPath, 'utf8'));
+        if (!installed.plugins) installed.plugins = {};
+      }
+    } catch {}
+
+    const pluginJson = JSON.parse(fs.readFileSync(pluginJsonPath, 'utf8'));
+    const pluginKey = `hytale-modding@local-custom-plugins`;
+    installed.plugins[pluginKey] = {
+      name: pluginJson.name || 'hytale-modding',
+      version: pluginJson.version || '6.3.0',
+      path: pluginSourceDir,
+      installedAt: new Date().toISOString(),
+      source: 'local'
+    };
+
+    fs.writeFileSync(installedPluginsPath, JSON.stringify(installed, null, 2));
+
+    // 5. Remove any orphaned marker
+    const orphanedFile = path.join(targetDir, '.orphaned_at');
+    if (fs.existsSync(orphanedFile)) fs.unlinkSync(orphanedFile);
+
+    return {
+      success: true,
+      plugins: ['hytale-modding'],
+      message: 'hytale-modding plugin installed and symlinked'
+    };
+  } catch (e) {
+    return {
+      success: false,
+      plugins: [],
+      message: `Plugin install failed: ${e.message}`
+    };
+  }
 }
 
 // ── Pull Ollama model ─────────────────────────────────────
@@ -545,23 +606,38 @@ async function runVerification() {
     results.mcpConfig = { pass: false, detail: '.mcp.json not found' };
   }
 
-  // 6. Plugins — check installed_plugins.json for hytale-modding
-  const installedPluginsPath = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
+  // 6. Plugins — check symlink AND installed_plugins.json
+  const claudePluginsDir = path.join(os.homedir(), '.claude', 'plugins');
+  const pluginSymlink = path.join(claudePluginsDir, 'hytale-modding');
+  const installedPluginsPath = path.join(claudePluginsDir, 'installed_plugins.json');
   let pluginFound = false;
-  let pluginDetail = 'Not installed';
-  try {
-    if (fs.existsSync(installedPluginsPath)) {
-      const installed = JSON.parse(fs.readFileSync(installedPluginsPath, 'utf8'));
-      const pluginKeys = Object.keys(installed.plugins || {});
-      const hytaleKey = pluginKeys.find(k => k.startsWith('hytale-modding'));
-      if (hytaleKey) {
-        pluginFound = true;
-        pluginDetail = `Hytale modding plugin installed (${hytaleKey.split('@')[1] || 'local'})`;
-      } else {
-        pluginDetail = `${pluginKeys.length} plugin(s) installed, hytale-modding not found`;
-      }
+  let pluginDetail = 'Plugin directory missing';
+
+  // Check symlink exists and points to a real directory
+  if (fs.existsSync(pluginSymlink)) {
+    const pluginJsonCheck = path.join(pluginSymlink, '.claude-plugin', 'plugin.json');
+    if (fs.existsSync(pluginJsonCheck)) {
+      pluginFound = true;
+      pluginDetail = 'hytale-modding plugin linked and valid';
+    } else {
+      pluginDetail = 'Plugin symlink exists but plugin.json missing';
     }
-  } catch {}
+  }
+
+  // Also check installed_plugins.json as fallback
+  if (!pluginFound) {
+    try {
+      if (fs.existsSync(installedPluginsPath)) {
+        const installed = JSON.parse(fs.readFileSync(installedPluginsPath, 'utf8'));
+        const pluginKeys = Object.keys(installed.plugins || {});
+        const hytaleKey = pluginKeys.find(k => k.startsWith('hytale-modding'));
+        if (hytaleKey) {
+          pluginFound = true;
+          pluginDetail = `Hytale modding plugin registered (${hytaleKey.split('@')[1] || 'local'})`;
+        }
+      }
+    } catch {}
+  }
   results.plugins = { pass: pluginFound, detail: pluginDetail };
 
   // 7. Ollama models
