@@ -91,10 +91,16 @@ function refreshPath() {
         return { success: true, source: 'zsh' };
       }
     } catch {}
-    // Fallback: prepend common macOS paths
+    // Fallback: prepend common macOS paths including Python bin dirs
     const fallbackPaths = ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin'];
+    // Add Python user bin dirs (where pip3 install --user puts binaries)
+    for (const ver of ['3.14', '3.13', '3.12', '3.11', '3.10']) {
+      fallbackPaths.push(path.join(os.homedir(), 'Library', 'Python', ver, 'bin'));
+      fallbackPaths.push(`/opt/homebrew/opt/python@${ver}/libexec/bin`);
+    }
+    fallbackPaths.push(path.join(os.homedir(), '.local', 'bin'));
     const current = process.env.PATH || '';
-    const missing = fallbackPaths.filter(p => !current.includes(p));
+    const missing = fallbackPaths.filter(p => !current.includes(p) && fs.existsSync(p));
     if (missing.length > 0) {
       process.env.PATH = missing.join(':') + ':' + current;
       return { success: true, source: 'fallback' };
@@ -159,8 +165,8 @@ async function checkDependencies() {
     },
     {
       name: 'OpenViking',
-      check: () => tryCommand('openviking --version') || tryCommand('ov --version'),
-      install: { win32: 'pip install openviking', darwin: 'pip3 install openviking' }
+      check: () => tryCommand('openviking-server --version') || tryCommand('openviking --version') || tryCommand('ov --version'),
+      install: { win32: 'pip install openviking', darwin: 'pip3 install --break-system-packages openviking' }
     },
   ];
 
@@ -184,6 +190,11 @@ async function checkDependencies() {
 
 function tryCommand(cmd) {
   try {
+    // On macOS, run through login shell to get full PATH (Electron has minimal PATH)
+    if (process.platform === 'darwin') {
+      const escaped = cmd.replace(/"/g, '\\"');
+      return execSync(`/bin/zsh -ilc "${escaped}"`, { encoding: 'utf8', timeout: 10000, stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    }
     return execSync(cmd, { encoding: 'utf8', timeout: 10000, stdio: ['pipe', 'pipe', 'pipe'] }).trim();
   } catch {
     return null;
@@ -194,9 +205,19 @@ function tryCommand(cmd) {
 
 async function installDependency(name, command, onProgress) {
   return new Promise((resolve, reject) => {
-    const parts = command.split(' ');
-    const proc = spawn(parts[0], parts.slice(1), {
-      shell: true,
+    // On macOS, run through login shell to get full PATH (brew, pip paths)
+    let shell, args;
+    if (process.platform === 'darwin') {
+      shell = '/bin/zsh';
+      args = ['-ilc', command];
+    } else {
+      const parts = command.split(' ');
+      shell = parts[0];
+      args = parts.slice(1);
+    }
+
+    const proc = spawn(shell, args, {
+      shell: process.platform !== 'darwin',
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env }
     });
@@ -212,6 +233,8 @@ async function installDependency(name, command, onProgress) {
     });
 
     proc.on('close', (code) => {
+      // Refresh PATH after install so next checks find the new binary
+      refreshPath();
       if (code === 0) resolve({ success: true, output });
       else reject(new Error(`${name} install failed (exit ${code}): ${output.slice(-500)}`));
     });
