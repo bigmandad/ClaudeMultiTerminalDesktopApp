@@ -302,6 +302,21 @@ contextBridge.exposeInMainWorld('api', {
     syncAll: () => ipcRenderer.invoke('pluginSync:syncAll'),
   },
 
+  // ── Watchdog Health Monitor ─────────────────────────────
+  watchdog: {
+    status: () => ipcRenderer.invoke('watchdog:status'),
+    start: () => ipcRenderer.invoke('watchdog:start'),
+    stop: () => ipcRenderer.invoke('watchdog:stop'),
+    runNow: () => ipcRenderer.invoke('watchdog:runNow'),
+    consentGitPush: () => ipcRenderer.invoke('watchdog:consentGitPush'),
+    revokeGitPush: () => ipcRenderer.invoke('watchdog:revokeGitPush'),
+    onStatus: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('watchdog:status', handler);
+      return () => ipcRenderer.removeListener('watchdog:status', handler);
+    }
+  },
+
   // ── Hook Events (Claude Code lifecycle) ──────────────────
   hooks: {
     recent: (limit) => ipcRenderer.invoke('hooks:recent', limit),

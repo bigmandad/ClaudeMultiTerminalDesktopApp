@@ -177,6 +177,20 @@ app.whenReady().then(async () => {
     console.log('[Main] OpenViking module not available:', err.message);
   }
 
+  // Auto-start Watchdog health monitor
+  try {
+    const watchdog = require('./health/watchdog');
+    const { registerWatchdogIPC } = require('./health/watchdog-ipc');
+    const db = require('./db/database');
+    const notifier = require('./notifications/notifier');
+    watchdog.init({ db, notifier, mainWindow });
+    registerWatchdogIPC(watchdog);
+    watchdog.start(30000);
+    console.log('[Main] Watchdog health monitor started');
+  } catch (err) {
+    console.log('[Main] Watchdog module not available:', err.message);
+  }
+
   // Auto-start Discord bot if token is available
   try {
     const db = require('./db/database');
@@ -212,7 +226,8 @@ app.on('window-all-closed', () => {
   PtyManager.killAll();
   // Mark all active/starting sessions as stopped so they can be restored on next launch
   markAllSessionsStopped();
-  // Push final state to Turso before closing
+  // Stop watchdog and push final state before closing
+  try { require('./health/watchdog').stop(); } catch (_) {}
   try { const db = require('./db/database'); db.sync(); } catch (_) {}
   cleanup();
   if (process.platform !== 'darwin') {
@@ -224,7 +239,8 @@ app.on('before-quit', () => {
   const { PtyManager } = require('./pty/pty-manager');
   PtyManager.killAll();
   markAllSessionsStopped();
-  // Push final state to Turso before quitting
+  // Stop watchdog and push final state before quitting
+  try { require('./health/watchdog').stop(); } catch (_) {}
   try { const db = require('./db/database'); db.sync(); } catch (_) {}
   cleanup();
 });

@@ -285,5 +285,7 @@ module.exports = {
   checkHealth,
   getStatus,
   apiRequest,
-  OV_PORT
+  OV_PORT,
+  resolveOvServerCmd,
+  resolveOllamaPath
 };
