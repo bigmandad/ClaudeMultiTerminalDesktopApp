@@ -659,9 +659,10 @@ function registerIpcHandlers(ipcMain) {
 
   ipcMain.handle('app:uploadLog', async () => {
     const { execSync } = require('child_process');
+    // __dirname is src/main/, go up two levels to repo root
     const appDir = __dirname.includes('app.asar')
-      ? path.resolve(__dirname, '..', '..')
-      : path.resolve(__dirname, '..');
+      ? path.resolve(__dirname, '..', '..', '..')
+      : path.resolve(__dirname, '..', '..');
 
     try {
       // Collect diagnostic info

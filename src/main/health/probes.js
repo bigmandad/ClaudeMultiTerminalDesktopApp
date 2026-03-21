@@ -250,8 +250,9 @@ function createProbes(deps) {
         console.log('[Watchdog] Re-linking plugins...');
         const pluginRepoDir = path.join(workspace, 'claude-plugins-custom');
 
-        // 1. Clone plugin repo if missing
-        if (!fs.existsSync(path.join(pluginRepoDir, '.git'))) {
+        // 1. Clone plugin repo if missing or incomplete
+        const pluginJsonExpected = path.join(pluginRepoDir, 'hytale-modding', '.claude-plugin', 'plugin.json');
+        if (!fs.existsSync(pluginJsonExpected)) {
           console.log('[Watchdog] Plugin repo not found — cloning...');
           try {
             if (fs.existsSync(pluginRepoDir)) {
