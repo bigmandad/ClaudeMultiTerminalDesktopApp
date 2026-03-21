@@ -603,6 +603,56 @@ function registerIpcHandlers(ipcMain) {
     }
   });
 
+  // ── Auto-Update & Restart ────────────────────────────────
+
+  ipcMain.handle('app:update', async () => {
+    const { execSync } = require('child_process');
+    const appDir = __dirname.includes('app.asar')
+      ? path.resolve(__dirname, '..', '..')
+      : path.resolve(__dirname, '..');
+
+    try {
+      // git pull from origin
+      const pullResult = execSync('git pull --ff-only origin main', {
+        cwd: appDir, encoding: 'utf8', timeout: 30000
+      }).trim();
+
+      if (pullResult.includes('Already up to date')) {
+        return { updated: false, message: 'Already up to date' };
+      }
+
+      // npm install in case dependencies changed
+      try {
+        execSync('npm install --production', {
+          cwd: appDir, encoding: 'utf8', timeout: 120000
+        });
+      } catch (npmErr) {
+        console.warn('[Update] npm install warning:', npmErr.message);
+      }
+
+      // Rebuild renderer bundle
+      try {
+        execSync('node build.js', {
+          cwd: appDir, encoding: 'utf8', timeout: 30000
+        });
+      } catch (buildErr) {
+        console.warn('[Update] build.js warning:', buildErr.message);
+      }
+
+      // Parse what changed from the pull output
+      const summary = pullResult.split('\n').find(l => l.includes('file')) || pullResult.split('\n')[0];
+      return { updated: true, summary, output: pullResult };
+    } catch (err) {
+      return { updated: false, message: `Update failed: ${err.message}` };
+    }
+  });
+
+  ipcMain.handle('app:restart', () => {
+    const { app } = require('electron');
+    app.relaunch();
+    app.exit(0);
+  });
+
   ipcMain.handle('clipboard:write', (event, text) => {
     clipboard.writeText(text);
     return { success: true };

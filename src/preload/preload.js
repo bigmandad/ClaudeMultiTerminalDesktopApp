@@ -138,7 +138,9 @@ contextBridge.exposeInMainWorld('api', {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
     checkClaudeAuth: () => ipcRenderer.invoke('app:checkClaudeAuth'),
-    dbHealth: () => ipcRenderer.invoke('app:dbHealth')
+    dbHealth: () => ipcRenderer.invoke('app:dbHealth'),
+    update: () => ipcRenderer.invoke('app:update'),
+    restart: () => ipcRenderer.invoke('app:restart')
   },
 
   clipboard: {

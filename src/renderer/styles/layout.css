@@ -275,6 +275,16 @@
   50% { opacity: 0.4; }
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+#update-btn.updating {
+  color: var(--accent);
+  background: rgba(var(--accent-rgb, 204, 153, 102), 0.15);
+}
+
 .session-info {
   flex: 1;
   min-width: 0;

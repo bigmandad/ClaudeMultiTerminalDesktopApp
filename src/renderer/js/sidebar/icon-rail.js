@@ -17,6 +17,38 @@ export function initIconRail() {
     });
   });
 
+  // Update & Restart button
+  const updateBtn = document.getElementById('update-btn');
+  if (updateBtn) {
+    updateBtn.addEventListener('click', async () => {
+      // Visual feedback
+      updateBtn.classList.add('updating');
+      updateBtn.title = 'Updating...';
+      const icon = updateBtn.querySelector('.rail-icon');
+      if (icon) icon.style.animation = 'spin 1s linear infinite';
+
+      try {
+        const result = await window.api.app.update();
+        if (result.updated) {
+          updateBtn.title = `Updated! Restarting... (${result.summary})`;
+          // Brief delay so user sees the message
+          setTimeout(() => window.api.app.restart(), 1500);
+        } else {
+          updateBtn.title = result.message || 'Already up to date';
+          updateBtn.classList.remove('updating');
+          if (icon) icon.style.animation = '';
+          // Reset title after 3 seconds
+          setTimeout(() => { updateBtn.title = 'Check for Updates & Restart'; }, 3000);
+        }
+      } catch (err) {
+        updateBtn.title = `Update failed: ${err.message}`;
+        updateBtn.classList.remove('updating');
+        if (icon) icon.style.animation = '';
+        setTimeout(() => { updateBtn.title = 'Check for Updates & Restart'; }, 3000);
+      }
+    });
+  }
+
   // Mute toggle is handled by notification-settings.js
 
   // Stats button
