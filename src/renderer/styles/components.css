@@ -1793,3 +1793,138 @@
   min-width: 24px;
   text-align: right;
 }
+
+/* ── Provider Panel ───────────────────────────────────── */
+
+.providers-list {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.provider-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 12px;
+  transition: border-color 0.2s;
+}
+
+.provider-card:hover {
+  border-color: rgba(255,255,255,0.15);
+}
+
+.provider-card.provider-connected {
+  border-left: 3px solid #7ab87a;
+}
+
+.provider-card.provider-disconnected {
+  border-left: 3px solid #555;
+}
+
+.provider-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.provider-icon {
+  font-size: 20px;
+  width: 28px;
+  text-align: center;
+}
+
+.provider-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.provider-name {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--cream);
+}
+
+.provider-desc {
+  display: block;
+  font-size: 10px;
+  color: var(--cream-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.provider-status {
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.provider-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.provider-key-input {
+  flex: 1;
+  min-width: 80px;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  color: var(--cream);
+  font-family: inherit;
+}
+
+.provider-key-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.provider-connect-btn, .provider-auth-btn, .provider-disconnect-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.provider-connect-btn {
+  background: var(--accent);
+  color: #1a1714;
+  font-weight: 600;
+}
+
+.provider-connect-btn:hover {
+  filter: brightness(1.1);
+}
+
+.provider-auth-btn {
+  background: rgba(255,255,255,0.08);
+  color: var(--cream);
+}
+
+.provider-auth-btn:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.provider-disconnect-btn {
+  background: rgba(192,112,112,0.2);
+  color: #c07070;
+}
+
+.provider-disconnect-btn:hover {
+  background: rgba(192,112,112,0.35);
+}
+
+.provider-auto-text {
+  font-size: 10px;
+  color: var(--cream-dim);
+  font-style: italic;
+}

@@ -40,6 +40,9 @@
         <button class="rail-btn" id="activity-rail-btn" data-panel="activity" title="Activity Log — Research experiments, hooks, and tool usage">
           <span class="rail-icon">&#128220;</span>
         </button>
+        <button class="rail-btn" id="providers-rail-btn" data-panel="providers" title="AI Providers — Connect GPT, Gemini, Ollama">
+          <span class="rail-icon">&#9881;</span>
+        </button>
         <div class="rail-divider"></div>
         <button class="rail-btn layout-btn active" data-layout="single" title="Single Pane">
           <span class="rail-icon">&#9635;</span>
@@ -195,6 +198,13 @@
           <button class="ov-tab" data-ov-tab="status">Status</button>
         </div>
         <div id="ov-content" class="ov-content"></div>
+      </div>
+      <!-- Providers Panel -->
+      <div class="panel-content hidden" id="providers-panel">
+        <div class="panel-header">
+          <span>AI PROVIDERS</span>
+        </div>
+        <div id="providers-list" class="providers-list"></div>
       </div>
     </div>
 

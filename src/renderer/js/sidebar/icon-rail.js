@@ -137,7 +137,8 @@ function updatePanelVisibility(activePanel) {
     plugins: 'plugins-panel',
     openviking: 'openviking-panel',
     autoresearch: 'autoresearch-panel',
-    activity: 'activity-panel'
+    activity: 'activity-panel',
+    providers: 'providers-panel'
   };
 
   for (const [key, id] of Object.entries(panels)) {
