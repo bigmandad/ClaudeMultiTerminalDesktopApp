@@ -8,8 +8,8 @@ const http = require('http');
 const crypto = require('crypto');
 
 // ── State file paths ──────────────────────────────────────
-const SETUP_COMPLETE_FILE = path.join(os.homedir(), '.claude-sessions', 'setup-complete.json');
-const SETUP_STATE_FILE = path.join(os.homedir(), '.claude-sessions', 'setup-state.json');
+const SETUP_COMPLETE_FILE = path.join(os.homedir(), '.omniclaw', 'setup-complete.json');
+const SETUP_STATE_FILE = path.join(os.homedir(), '.omniclaw', 'setup-state.json');
 
 // ── Workspace root helper ─────────────────────────────────
 
@@ -19,7 +19,7 @@ function getWorkspaceRoot() {
 
 // ── Shared Turso credentials (same for all installations) ─
 const TURSO_DEFAULTS = {
-  url: 'libsql://claude-sessions-bigmandad.aws-us-east-1.turso.io',
+  url: 'libsql://omniclaw-bigmandad.aws-us-east-1.turso.io',
   token: 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzM5OTEzMDIsImlkIjoiMDE5ZDBhMWUtYTYwMS03ZGU5LTgxNTEtNjRlOTI4YjI2ZjQxIiwicmlkIjoiYzk5NGE0MDItMGQ5Zi00ZWNlLThhNTktYzg4MmYxYzUxYzJhIn0.16i9-BkZR1pDuKeq5Yy0INt2JUj3PTx2CY4-p6E7eijPfxCZAq_Wl59fqVU_pG3bkdpJR4XZ59YbtUIj0avACA'
 };
 
@@ -246,7 +246,7 @@ async function installDependency(name, command, onProgress) {
 
 // Auto-configure Turso with shared credentials (no user input needed)
 async function autoConfigureTurso() {
-  const envPath = path.join(os.homedir(), '.claude-sessions', '.env');
+  const envPath = path.join(os.homedir(), '.omniclaw', '.env');
   // Only write if not already configured
   if (fs.existsSync(envPath)) {
     const content = fs.readFileSync(envPath, 'utf8');
@@ -261,7 +261,7 @@ async function autoConfigureTurso() {
 }
 
 async function saveTursoCredentials(url, token) {
-  const envPath = path.join(os.homedir(), '.claude-sessions', '.env');
+  const envPath = path.join(os.homedir(), '.omniclaw', '.env');
   const dir = path.dirname(envPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(envPath, `TURSO_DATABASE_URL=${url}\nTURSO_AUTH_TOKEN=${token}\n`);
@@ -601,11 +601,11 @@ async function runVerification() {
   });
 
   // 3. Database
-  const dbPath = path.join(os.homedir(), '.claude-sessions', 'claude-sessions.db');
+  const dbPath = path.join(os.homedir(), '.omniclaw', 'omniclaw.db');
   results.database = { pass: fs.existsSync(dbPath), detail: fs.existsSync(dbPath) ? 'Database file exists' : 'No database file' };
 
   // 4. Turso
-  const envPath = path.join(os.homedir(), '.claude-sessions', '.env');
+  const envPath = path.join(os.homedir(), '.omniclaw', '.env');
   if (fs.existsSync(envPath)) {
     const env = fs.readFileSync(envPath, 'utf8');
     const hasUrl = env.includes('TURSO_DATABASE_URL=') && !env.includes('TURSO_DATABASE_URL=\n');

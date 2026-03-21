@@ -7,7 +7,7 @@ const targetAnalyzer = require('./target-analyzer');
 const experimentTracker = require('./experiment-tracker');
 const programTemplates = require('./program-templates');
 
-const RESEARCH_DIR = path.join(os.homedir(), '.claude-sessions', 'autoresearch');
+const RESEARCH_DIR = path.join(os.homedir(), '.omniclaw', 'autoresearch');
 
 // ── Safety limits & diminishing returns defaults ─────────
 const DEFAULTS = {

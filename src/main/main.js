@@ -7,12 +7,12 @@ const { registerSetupIPC } = require('./setup/setup-ipc');
 const { registerPluginSyncIPC } = require('./sync/plugin-sync-ipc');
 const { createMenu } = require('./menu');
 
-// ── Load env vars from ~/.claude-sessions/.env (if it exists) ──
+// ── Load env vars from ~/.omniclaw/.env (if it exists) ──
 // Simple key=value parser — no dotenv dependency required.
 // Must run before any module reads process.env for Turso config.
 (function loadDotEnv() {
   try {
-    const envPath = path.join(os.homedir(), '.claude-sessions', '.env');
+    const envPath = path.join(os.homedir(), '.omniclaw', '.env');
     if (!fs.existsSync(envPath)) return;
     const content = fs.readFileSync(envPath, 'utf8');
     for (const line of content.split(/\r?\n/)) {

@@ -9,7 +9,7 @@ const os = require('os');
 const { runResearchIteration } = require('./headless-runner');
 const experimentTracker = require('./experiment-tracker');
 
-const RESEARCH_DIR = path.join(os.homedir(), '.claude-sessions', 'autoresearch');
+const RESEARCH_DIR = path.join(os.homedir(), '.omniclaw', 'autoresearch');
 
 // Active headless research sessions
 const activeHeadless = new Map();

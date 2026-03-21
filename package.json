@@ -1,7 +1,7 @@
 {
-  "name": "claude-sessions",
-  "version": "0.1.0",
-  "description": "Multi-pane terminal manager for Claude CLI sessions",
+  "name": "omniclaw",
+  "version": "1.0.0",
+  "description": "Multi-LLM orchestration platform — run Claude, GPT, Gemini, and Ollama in parallel with peer review synthesis",
   "main": "src/main/main.js",
   "scripts": {
     "start": "node build.js && electron .",

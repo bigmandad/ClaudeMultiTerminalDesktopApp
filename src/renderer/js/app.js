@@ -1,4 +1,4 @@
-// ── Claude Sessions — App Entry Point ─────────────────────
+// ── OmniClaw — App Entry Point ─────────────────────
 
 import { state } from './state.js';
 import { events } from './events.js';
@@ -40,7 +40,7 @@ import { showSetupWizard } from './setup/setup-wizard-panel.js';
 // ── Initialize ────────────────────────────────────────────
 
 async function init() {
-  console.log('Claude Sessions initializing...');
+  console.log('OmniClaw initializing...');
 
   // Check if first-run setup is needed
   try {
@@ -381,7 +381,7 @@ async function initApp() {
     }
   });
 
-  console.log('Claude Sessions ready.');
+  console.log('OmniClaw ready.');
 }
 
 // ── Start ─────────────────────────────────────────────────

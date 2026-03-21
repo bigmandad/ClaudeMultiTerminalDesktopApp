@@ -667,7 +667,7 @@ function registerIpcHandlers(ipcMain) {
     try {
       // Collect diagnostic info
       const lines = [];
-      lines.push(`=== Claude Sessions Diagnostic Log ===`);
+      lines.push(`=== OmniClaw Diagnostic Log ===`);
       lines.push(`Date: ${new Date().toISOString()}`);
       lines.push(`Platform: ${process.platform} ${process.arch}`);
       lines.push(`Node: ${process.version}`);
@@ -693,9 +693,9 @@ function registerIpcHandlers(ipcMain) {
       // Check key paths
       lines.push('=== Path Checks ===');
       const checks = [
-        ['DB', path.join(os.homedir(), '.claude-sessions', 'claude-sessions.db')],
-        ['Turso Replica', path.join(os.homedir(), '.claude-sessions', 'turso-replica.db')],
-        ['.env', path.join(os.homedir(), '.claude-sessions', '.env')],
+        ['DB', path.join(os.homedir(), '.omniclaw', 'omniclaw.db')],
+        ['Turso Replica', path.join(os.homedir(), '.omniclaw', 'turso-replica.db')],
+        ['.env', path.join(os.homedir(), '.omniclaw', '.env')],
         ['OV Config', path.join(os.homedir(), '.openviking', 'ov.conf')],
         ['Plugins', path.join(os.homedir(), '.claude', 'plugins', 'hytale-modding')],
         ['Plugin Repo', path.join(os.homedir(), 'Documents', 'ClaudeWorkspace', 'claude-plugins-custom', '.git')],
@@ -1103,7 +1103,7 @@ function registerIpcHandlers(ipcMain) {
     const { groupName, memberNames, memberWorkspaces } = opts;
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const folderName = `${memberNames.join('_')}_${timestamp}`;
-    const groupsRoot = path.join(os.homedir(), '.claude-sessions', 'group-workspaces');
+    const groupsRoot = path.join(os.homedir(), '.omniclaw', 'group-workspaces');
     const groupFolder = path.join(groupsRoot, folderName);
 
     try {

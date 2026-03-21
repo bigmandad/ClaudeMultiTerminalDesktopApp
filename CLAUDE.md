@@ -1,4 +1,4 @@
-# Claude Sessions
+# OmniClaw
 
 Multi-pane Electron terminal manager for running multiple `claude` CLI sessions simultaneously.
 
@@ -13,8 +13,8 @@ Multi-pane Electron terminal manager for running multiple `claude` CLI sessions 
 - **Native modules**: `@homebridge/node-pty-prebuilt-multiarch` (prebuilt, no Python needed) and `better-sqlite3` (prebuild-install for Electron)
 - **Bundler**: esbuild bundles `src/renderer/js/app.js` → `dist/renderer.js`
 - **PTY strategy**: Spawns PowerShell, then writes `claude [args]\r` into it
-- **Database**: SQLite with WAL mode at `~/.claude-sessions/claude-sessions.db`
-- **Transcripts**: Written to `~/.claude-sessions/transcripts/{sessionId}/{date}.md`
+- **Database**: SQLite with WAL mode at `~/.omniclaw/omniclaw.db`
+- **Transcripts**: Written to `~/.omniclaw/transcripts/{sessionId}/{date}.md`
 - **OpenViking**: Local semantic knowledge server on port 1933, auto-started on launch
 - **AutoResearch**: Karpathy-inspired autonomous improvement loop with experiment tracking
 

@@ -1,6 +1,6 @@
 // ── Messaging Bridge — Platform-agnostic adapter for chat platforms ────
 // Routes messages between chat platforms (Discord, Telegram, etc.)
-// and Claude Sessions PTY instances.
+// and OmniClaw PTY instances.
 //
 // Output strategy (VT buffer approach):
 //   1. Raw PTY data is fed into a per-session VirtualTerminal buffer

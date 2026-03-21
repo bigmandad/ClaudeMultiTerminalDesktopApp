@@ -109,7 +109,7 @@ function createProbes(deps) {
       label: 'Cloud Sync (Turso)',
       check: async () => {
         // Check if Turso is configured
-        const envPath = path.join(os.homedir(), '.claude-sessions', '.env');
+        const envPath = path.join(os.homedir(), '.omniclaw', '.env');
         if (!fs.existsSync(envPath)) {
           return { status: 'healthy', message: 'Local-only mode (no cloud)', fixable: false };
         }
@@ -130,7 +130,7 @@ function createProbes(deps) {
           } catch {}
         }
         // Can't determine age, just check if replica file exists
-        const replicaPath = path.join(os.homedir(), '.claude-sessions', 'turso-replica.db');
+        const replicaPath = path.join(os.homedir(), '.omniclaw', 'turso-replica.db');
         if (fs.existsSync(replicaPath)) {
           return { status: 'healthy', message: 'Replica exists', fixable: false };
         }
@@ -155,7 +155,7 @@ function createProbes(deps) {
       name: 'database',
       label: 'Session Database',
       check: async () => {
-        const dbPath = path.join(os.homedir(), '.claude-sessions', 'claude-sessions.db');
+        const dbPath = path.join(os.homedir(), '.omniclaw', 'omniclaw.db');
         if (!fs.existsSync(dbPath)) {
           return { status: 'down', message: 'Database file missing', fixable: false };
         }

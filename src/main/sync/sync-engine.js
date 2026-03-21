@@ -26,7 +26,7 @@ const MACHINE_ID = getMachineId();
 const MACHINE_NAME = getMachineName();
 const PLATFORM = os.platform();
 const SESSIONS_DIR = path.join(os.homedir(), '.claude', 'projects');
-const TRANSCRIPTS_DIR = path.join(os.homedir(), '.claude-sessions', 'transcripts');
+const TRANSCRIPTS_DIR = path.join(os.homedir(), '.omniclaw', 'transcripts');
 
 // ---------------------------------------------------------------------------
 // Machine registration
@@ -250,7 +250,7 @@ async function syncOnLaunch() {
     // Plugin sync — reconcile marketplace manifests and custom plugin repos
     try {
       const Database = require('better-sqlite3');
-      const dbPath = path.join(os.homedir(), '.claude-sessions', 'claude-sessions.db');
+      const dbPath = path.join(os.homedir(), '.omniclaw', 'omniclaw.db');
       const localDb = new Database(dbPath, { readonly: false });
       const customRepo = path.join(os.homedir(), 'Documents', 'ClaudeWorkspace', 'claude-plugins-custom');
       try {

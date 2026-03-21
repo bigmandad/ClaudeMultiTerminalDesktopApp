@@ -60,7 +60,7 @@ async function autoCommit(cwd, sessionName) {
     if (modified > 0) parts.push(`update ${modified} file${modified > 1 ? 's' : ''}`);
     if (deleted > 0) parts.push(`remove ${deleted} file${deleted > 1 ? 's' : ''}`);
 
-    const message = `[claude-sessions/${sessionName}] ${parts.join(', ') || `${fileCount} changes`}`;
+    const message = `[omniclaw/${sessionName}] ${parts.join(', ') || `${fileCount} changes`}`;
 
     await exec('git', ['commit', '-m', message], { cwd });
     return message;
@@ -72,7 +72,7 @@ async function autoCommit(cwd, sessionName) {
 
 async function createGitWorktree(cwd, sessionName) {
   const worktreePath = path.join(cwd, '.claude', 'worktrees', sessionName);
-  const branchName = `claude-sessions/${sessionName}`;
+  const branchName = `omniclaw/${sessionName}`;
 
   try {
     await exec('git', ['worktree', 'add', '-b', branchName, worktreePath], { cwd });

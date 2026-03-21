@@ -109,7 +109,7 @@ function createMenu(mainWindow) {
       label: 'Help',
       submenu: [
         ...(!isMac ? [{
-          label: 'About Claude Sessions',
+          label: 'About OmniClaw',
           click: () => mainWindow?.webContents.send('menu:about')
         }] : [])
       ]

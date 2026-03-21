@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# Claude Sessions — Bootstrap Installer (Mac + Linux)
+# OmniClaw — Bootstrap Installer (Mac + Linux)
 # Installs bare minimum, then launches the app's setup wizard.
 #
 # Usage:
@@ -21,7 +21,7 @@ warn() { echo -e "${YELLOW}!${NC} $1"; }
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
-echo "║     Claude Sessions — Quick Setup        ║"
+echo "║     OmniClaw — Quick Setup        ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 
@@ -71,18 +71,18 @@ ok "Dependencies installed"
 
 # ── 5. Create desktop launcher (Mac) ────────────────────
 if [ "$(uname -s)" = "Darwin" ]; then
-  cat > "$HOME/Desktop/Claude Sessions.command" << 'EOF'
+  cat > "$HOME/Desktop/OmniClaw.command" << 'EOF'
 #!/bin/bash
 cd "$HOME/Documents/ClaudeWorkspace/ClaudeProjects/ClaudeMultiTerminalDesktopApp" && npm start
 EOF
-  chmod +x "$HOME/Desktop/Claude Sessions.command"
+  chmod +x "$HOME/Desktop/OmniClaw.command"
   ok "Desktop launcher created"
 fi
 
 # ── 6. Launch the app (wizard handles everything else) ──
 echo ""
 echo "╔══════════════════════════════════════════╗"
-echo "║   Launching Claude Sessions...           ║"
+echo "║   Launching OmniClaw...           ║"
 echo "║   The setup wizard will guide you.       ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""

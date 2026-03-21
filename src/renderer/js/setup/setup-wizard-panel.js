@@ -34,7 +34,7 @@ async function createWizardOverlay() {
   overlay.innerHTML = `
     <div class="setup-wizard">
       <div class="setup-header">
-        <div class="setup-logo">Claude Sessions</div>
+        <div class="setup-logo">OmniClaw</div>
         <div class="setup-subtitle">First-Run Setup Wizard</div>
       </div>
       <div class="setup-progress">
@@ -89,7 +89,7 @@ function renderStep() {
 function renderWelcome(body, footer) {
   body.innerHTML = `
     <div class="setup-section">
-      <h2 class="setup-title">Welcome to Claude Sessions</h2>
+      <h2 class="setup-title">Welcome to OmniClaw</h2>
       <p class="setup-text">
         This wizard will check your system for required dependencies,
         install any that are missing, and configure your development environment.
@@ -536,7 +536,7 @@ async function renderComplete(body, footer) {
       <h2 class="setup-title">Setup Complete</h2>
       <p class="setup-text">
         Your environment is configured and ready to go.
-        Claude Sessions will now start normally.
+        OmniClaw will now start normally.
       </p>
       <div class="setup-summary" id="setup-summary">
         ${depsTotal > 0 ? `
@@ -561,7 +561,7 @@ async function renderComplete(body, footer) {
   `;
 
   footer.innerHTML = `
-    <button class="btn btn-primary setup-btn setup-btn-large" id="setup-finish-btn">Launch Claude Sessions</button>
+    <button class="btn btn-primary setup-btn setup-btn-large" id="setup-finish-btn">Launch OmniClaw</button>
   `;
 
   document.getElementById('setup-rerun-link').addEventListener('click', async () => {

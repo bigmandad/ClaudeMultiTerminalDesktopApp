@@ -18,7 +18,7 @@ function findHytalePluginDir() {
 }
 const HYTALE_PLUGIN_DIR = findHytalePluginDir();
 const HYTALE_SKILLS_DIR = path.join(HYTALE_PLUGIN_DIR, 'skills');
-const TRANSCRIPTS_DIR = path.join(os.homedir(), '.claude-sessions', 'transcripts');
+const TRANSCRIPTS_DIR = path.join(os.homedir(), '.omniclaw', 'transcripts');
 const CLAUDE_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 
 /**

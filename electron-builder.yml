@@ -1,5 +1,5 @@
-appId: com.claudesessions.app
-productName: Claude Sessions
+appId: com.omniclaw.app
+productName: OmniClaw
 copyright: Copyright © 2026
 
 directories:
@@ -29,17 +29,17 @@ win:
     - portable
   icon: assets/icon.ico
   signAndEditExecutable: false
-  artifactName: "ClaudeSessions-Setup-${version}.${ext}"
+  artifactName: "OmniClaw-Setup-${version}.${ext}"
 
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
-  artifactName: "ClaudeSessions-Setup-${version}.${ext}"
+  artifactName: "OmniClaw-Setup-${version}.${ext}"
 
 portable:
-  artifactName: "ClaudeSessions-Portable-${version}.${ext}"
+  artifactName: "OmniClaw-Portable-${version}.${ext}"
   requestExecutionLevel: user
 
 mac:
@@ -47,19 +47,19 @@ mac:
     - dmg
   icon: assets/icon.icns
   category: public.app-category.developer-tools
-  artifactName: "ClaudeSessions-${version}-${arch}.${ext}"
+  artifactName: "OmniClaw-${version}-${arch}.${ext}"
   hardenedRuntime: true
   gatekeeperAssess: false
 
 dmg:
-  artifactName: "ClaudeSessions-${version}-${arch}.${ext}"
+  artifactName: "OmniClaw-${version}-${arch}.${ext}"
 
 linux:
   target:
     - AppImage
   icon: assets/icon.png
   category: Development
-  artifactName: "ClaudeSessions-${version}.${ext}"
+  artifactName: "OmniClaw-${version}.${ext}"
 
 publish:
   provider: github

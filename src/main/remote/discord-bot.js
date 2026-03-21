@@ -1,7 +1,7 @@
 // ── Discord Bot — Remote CLI access via Discord ───────────
 // Lobby-based architecture:
 //   - "claude-sessions-lobby" channel for orchestrating sessions
-//   - Private channels per session in "Claude Sessions" category
+//   - Private channels per session in "OmniClaw" category
 //   - @bot mentions for interaction (lobby: create/end, session: chat)
 //   - Rich embed output with markdown summaries
 
@@ -27,7 +27,7 @@ let pendingTyping = new Map();
 // Lobby status message tracking: guildId -> messageId
 const lobbyStatusMessages = new Map();
 
-const CATEGORY_NAME = 'Claude Sessions';
+const CATEGORY_NAME = 'OmniClaw';
 const LOBBY_NAME = 'claude-sessions-lobby';
 const EMBED_COLOR = 0xd4845a; // orange accent matching app theme
 const SUCCESS_COLOR = 0x57f287;
@@ -43,7 +43,7 @@ function error(...args) { try { console.error(...args); } catch (e) { /* swallow
 const commands = [
   new SlashCommandBuilder()
     .setName('sessions')
-    .setDescription('List all Claude Sessions'),
+    .setDescription('List all OmniClaw'),
 
   new SlashCommandBuilder()
     .setName('status')
@@ -225,7 +225,7 @@ async function ensureBotAccess(channel) {
 async function setupGuild(guild) {
   log(`[DiscordBot] Setting up guild: ${guild.name}`);
 
-  // Find or create the "Claude Sessions" category
+  // Find or create the "OmniClaw" category
   let category = guild.channels.cache.find(
     c => c.type === ChannelType.GuildCategory && c.name === CATEGORY_NAME
   );
@@ -235,7 +235,7 @@ async function setupGuild(guild) {
       name: CATEGORY_NAME,
       type: ChannelType.GuildCategory,
       permissionOverwrites: botPermissionOverwrites(guild),
-      reason: 'Claude Sessions bot setup'
+      reason: 'OmniClaw bot setup'
     });
     log(`[DiscordBot] Created category: ${CATEGORY_NAME}`);
   } else {
@@ -257,7 +257,7 @@ async function setupGuild(guild) {
       parent: category.id,
       permissionOverwrites: botPermissionOverwrites(guild),
       topic: 'Orchestrate Claude CLI sessions. @mention the bot to create, list, or end sessions.',
-      reason: 'Claude Sessions lobby'
+      reason: 'OmniClaw lobby'
     });
     log(`[DiscordBot] Created lobby channel: ${LOBBY_NAME}`);
 
@@ -297,17 +297,17 @@ async function setupGuild(guild) {
 
 async function sendLobbyWelcome(channel) {
   const embed = new EmbedBuilder()
-    .setTitle('Claude Sessions')
+    .setTitle('OmniClaw')
     .setColor(EMBED_COLOR)
     .setDescription(
-      'Welcome to the Claude Sessions lobby! Use this channel to manage your remote CLI sessions.\n\n' +
+      'Welcome to the OmniClaw lobby! Use this channel to manage your remote CLI sessions.\n\n' +
       '**Commands** (mention me first):\n' +
       '`@ClaudeSessions create <name>` — Start a new session\n' +
       '`@ClaudeSessions end <name>` — Stop a session\n' +
       '`@ClaudeSessions list` — Show all sessions\n\n' +
       'Each session gets its own private channel. Send messages there (with `@ClaudeSessions`) to interact with the CLI.'
     )
-    .setFooter({ text: 'Claude Sessions Bot' })
+    .setFooter({ text: 'OmniClaw Bot' })
     .setTimestamp();
 
   await channel.send({ embeds: [embed] });
@@ -378,7 +378,7 @@ async function createSessionChannel(guild, session, setup) {
       topic: `Session: ${session.name} | Mode: ${session.mode || 'ask'} | ID: ${session.id.slice(0, 12)}`,
       reason: `Claude session channel for: ${session.name}`
     });
-    log(`[DiscordBot] Created #${channelName} in Claude Sessions category`);
+    log(`[DiscordBot] Created #${channelName} in OmniClaw category`);
   } catch (createErr) {
     error(`[DiscordBot] Could not create channel #${channelName}: ${createErr.message}`);
     throw createErr;
@@ -1205,7 +1205,7 @@ function buildSessionsEmbed() {
 
   if (!sessions.length) {
     return new EmbedBuilder()
-      .setTitle('\uD83D\uDCCB Claude Sessions')
+      .setTitle('\uD83D\uDCCB OmniClaw')
       .setColor(EMBED_COLOR)
       .setDescription('No sessions found.\nUse `@ClaudeSessions create <name>` to start one.')
       .setFooter({ text: `Last updated` })
@@ -1238,7 +1238,7 @@ function buildSessionsEmbed() {
   }
 
   return new EmbedBuilder()
-    .setTitle('\uD83D\uDCCB Claude Sessions')
+    .setTitle('\uD83D\uDCCB OmniClaw')
     .setColor(EMBED_COLOR)
     .setDescription(lines.join('\n'))
     .setFooter({ text: `${active.length} active · ${stopped.length} stopped · Last updated` })
@@ -1295,7 +1295,7 @@ async function refreshAllLobbyStatus() {
 
 async function sendLobbyHelp(message) {
   const embed = new EmbedBuilder()
-    .setTitle('Claude Sessions — Help')
+    .setTitle('OmniClaw — Help')
     .setColor(EMBED_COLOR)
     .setDescription(
       '**Available Commands** (mention me first):\n\n' +
@@ -1308,7 +1308,7 @@ async function sendLobbyHelp(message) {
       '`@ClaudeSessions create my-project at D:\\Projects\\my-project`\n' +
       '`@ClaudeSessions create quick-fix`\n\n' +
       '**Session Channels:**\n' +
-      'Each session gets its own channel under the **Claude Sessions** category. ' +
+      'Each session gets its own channel under the **OmniClaw** category. ' +
       'Mention me in a session channel to send messages to the CLI.\n' +
       'Sessions created in the desktop app also auto-create channels here.\n\n' +
       '**Output:**\n' +

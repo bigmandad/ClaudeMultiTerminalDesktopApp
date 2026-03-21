@@ -90,7 +90,7 @@ class McpManager {
       params: {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'claude-sessions', version: '0.1.0' }
+        clientInfo: { name: 'omniclaw', version: '0.1.0' }
       }
     });
   }

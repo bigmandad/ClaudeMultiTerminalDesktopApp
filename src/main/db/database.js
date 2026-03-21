@@ -10,9 +10,37 @@ let tursoDB = null;
 let syncEngine = null;
 
 function getDbPath() {
-  const dir = path.join(os.homedir(), '.claude-sessions');
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  return path.join(dir, 'claude-sessions.db');
+  const newDir = path.join(os.homedir(), '.omniclaw');
+  const newDb = path.join(newDir, 'omniclaw.db');
+
+  // Migrate from old ~/.claude-sessions/ if it exists
+  const oldDir = path.join(os.homedir(), '.claude-sessions');
+  const oldDb = path.join(oldDir, 'claude-sessions.db');
+  if (!fs.existsSync(newDb) && fs.existsSync(oldDb)) {
+    console.log('[DB] Migrating data from ~/.claude-sessions/ to ~/.omniclaw/');
+    if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
+    // Copy DB + WAL files
+    for (const suffix of ['', '-wal', '-shm']) {
+      const src = oldDb + suffix;
+      const dst = newDb + suffix;
+      if (fs.existsSync(src)) fs.copyFileSync(src, dst);
+    }
+    // Copy other data (transcripts, .env, setup state)
+    for (const file of ['setup-complete.json', 'setup-state.json', '.env']) {
+      const src = path.join(oldDir, file);
+      const dst = path.join(newDir, file);
+      if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst);
+    }
+    const oldTranscripts = path.join(oldDir, 'transcripts');
+    const newTranscripts = path.join(newDir, 'transcripts');
+    if (fs.existsSync(oldTranscripts) && !fs.existsSync(newTranscripts)) {
+      fs.cpSync(oldTranscripts, newTranscripts, { recursive: true });
+    }
+    console.log('[DB] Migration complete');
+  }
+
+  if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
+  return newDb;
 }
 
 function init() {

@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const RESEARCH_DIR = path.join(os.homedir(), '.claude-sessions', 'autoresearch');
+const RESEARCH_DIR = path.join(os.homedir(), '.omniclaw', 'autoresearch');
 
 /**
  * Initialize tracker for a target. Creates the results directory and TSV file.

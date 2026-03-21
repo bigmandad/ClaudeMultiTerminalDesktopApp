@@ -1,5 +1,5 @@
 # ============================================================
-# Claude Sessions — Bootstrap Installer (Windows PowerShell)
+# OmniClaw — Bootstrap Installer (Windows PowerShell)
 # Installs bare minimum, then launches the app's setup wizard.
 #
 # Usage:
@@ -12,7 +12,7 @@ function Warn($msg) { Write-Host "  [!!] $msg" -ForegroundColor Yellow }
 
 Write-Host ""
 Write-Host "  ==========================================" -ForegroundColor Cyan
-Write-Host "    Claude Sessions - Quick Setup            " -ForegroundColor Cyan
+Write-Host "    OmniClaw - Quick Setup            " -ForegroundColor Cyan
 Write-Host "  ==========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -52,7 +52,7 @@ Ok "Dependencies installed"
 # ── 4. Create desktop shortcut ───────────────────────────
 $Desktop = [Environment]::GetFolderPath("Desktop")
 $Shell = New-Object -ComObject WScript.Shell
-$Shortcut = $Shell.CreateShortcut("$Desktop\Claude Sessions.lnk")
+$Shortcut = $Shell.CreateShortcut("$Desktop\OmniClaw.lnk")
 $Shortcut.TargetPath = (Get-Command npm).Source
 $Shortcut.Arguments = "start"
 $Shortcut.WorkingDirectory = $AppDir
@@ -65,7 +65,7 @@ Ok "Desktop shortcut created"
 # ── 5. Launch the app ────────────────────────────────────
 Write-Host ""
 Write-Host "  ==========================================" -ForegroundColor Green
-Write-Host "    Launching Claude Sessions...             " -ForegroundColor Green
+Write-Host "    Launching OmniClaw...             " -ForegroundColor Green
 Write-Host "    The setup wizard will guide you.         " -ForegroundColor Green
 Write-Host "  ==========================================" -ForegroundColor Green
 Write-Host ""
