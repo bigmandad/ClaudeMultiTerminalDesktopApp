@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # ============================================================
 # Claude Sessions — One-Command Bootstrap (Mac + Linux)
-# Usage: curl -sL https://raw.githubusercontent.com/bigmandad/ClaudeMultiTerminalDesktopApp/main/scripts/bootstrap.sh | bash
+# Usage: curl -sL https://raw.githubusercontent.com/bigmandad/ClaudeMultiTerminalDesktopApp/main/scripts/bootstrap.sh -o /tmp/cs-bootstrap.sh && bash /tmp/cs-bootstrap.sh
 # ============================================================
 set -e
+
+# Self-download guard: if piped via curl|bash, save to file and re-exec
+if [ ! -t 0 ] && [ -z "$CS_BOOTSTRAP_REEXEC" ]; then
+  TMPSCRIPT="$(mktemp /tmp/cs-bootstrap.XXXXXX.sh)"
+  cat > "$TMPSCRIPT"
+  CS_BOOTSTRAP_REEXEC=1 exec bash "$TMPSCRIPT"
+fi
 
 WORKSPACE="$HOME/Documents/ClaudeWorkspace"
 PROJECTS="$WORKSPACE/ClaudeProjects"
@@ -37,7 +44,7 @@ ok "Platform: $PLATFORM ($OS)"
 if [ "$PLATFORM" = "mac" ]; then
   if ! command -v brew &>/dev/null; then
     warn "Installing Homebrew..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv)"
     ok "Homebrew installed"
   else
