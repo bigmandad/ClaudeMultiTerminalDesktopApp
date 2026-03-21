@@ -611,30 +611,34 @@ function registerIpcHandlers(ipcMain) {
       ? path.resolve(__dirname, '..', '..')
       : path.resolve(__dirname, '..');
 
+    // On macOS, run commands through login shell to get full PATH
+    const run = (cmd, opts = {}) => {
+      const execOpts = { cwd: appDir, encoding: 'utf8', ...opts };
+      if (process.platform === 'darwin') {
+        const escaped = cmd.replace(/"/g, '\\"');
+        return execSync(`/bin/zsh -ilc "cd '${appDir}' && ${escaped}"`, execOpts).trim();
+      }
+      return execSync(cmd, execOpts).trim();
+    };
+
     try {
       // git pull from origin
-      const pullResult = execSync('git pull --ff-only origin main', {
-        cwd: appDir, encoding: 'utf8', timeout: 30000
-      }).trim();
+      const pullResult = run('git pull --ff-only origin main', { timeout: 30000 });
 
       if (pullResult.includes('Already up to date')) {
         return { updated: false, message: 'Already up to date' };
       }
 
-      // npm install in case dependencies changed
+      // npm install (include devDeps so esbuild is available for build)
       try {
-        execSync('npm install --production', {
-          cwd: appDir, encoding: 'utf8', timeout: 120000
-        });
+        run('npm install', { timeout: 120000 });
       } catch (npmErr) {
         console.warn('[Update] npm install warning:', npmErr.message);
       }
 
       // Rebuild renderer bundle
       try {
-        execSync('node build.js', {
-          cwd: appDir, encoding: 'utf8', timeout: 30000
-        });
+        run('node build.js', { timeout: 30000 });
       } catch (buildErr) {
         console.warn('[Update] build.js warning:', buildErr.message);
       }
