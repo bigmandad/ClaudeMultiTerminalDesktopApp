@@ -143,6 +143,16 @@ class McpManager {
         inputSchema: t.inputSchema || {}
       }));
       this._notifyStatus(name, server);
+    } else if (msg.id && server._pendingCalls && server._pendingCalls[msg.id]) {
+      // Resolve pending tool call
+      const pending = server._pendingCalls[msg.id];
+      delete server._pendingCalls[msg.id];
+      clearTimeout(pending.timeout);
+      if (msg.error) {
+        pending.reject(new Error(msg.error.message || 'Tool call failed'));
+      } else {
+        pending.resolve(msg.result);
+      }
     } else if (msg.method === 'notifications/tools/list_changed') {
       // Refresh tools
       this._sendJsonRpc(server.process, {
@@ -189,6 +199,51 @@ class McpManager {
       }
     }
     return allTools;
+  }
+
+  /**
+   * Execute a tool call on an MCP server.
+   * @param {string} serverName - Which MCP server owns this tool
+   * @param {string} toolName - The tool to call
+   * @param {object} args - Tool arguments
+   * @returns {Promise<object>} Tool result
+   */
+  async callTool(serverName, toolName, args = {}) {
+    const server = this.servers.get(serverName);
+    if (!server) throw new Error(`MCP server not found: ${serverName}`);
+    if (server.status !== 'connected') throw new Error(`MCP server not connected: ${serverName}`);
+
+    const id = Date.now() + Math.random();
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        delete server._pendingCalls[id];
+        reject(new Error(`Tool call timed out: ${toolName}`));
+      }, 30000);
+
+      if (!server._pendingCalls) server._pendingCalls = {};
+      server._pendingCalls[id] = { resolve, reject, timeout };
+
+      this._sendJsonRpc(server.process, {
+        jsonrpc: '2.0',
+        id,
+        method: 'tools/call',
+        params: { name: toolName, arguments: args }
+      });
+    });
+  }
+
+  /**
+   * Find which server owns a tool by name.
+   * @param {string} toolName
+   * @returns {{ serverName: string, tool: object } | null}
+   */
+  findToolServer(toolName) {
+    for (const [name, server] of this.servers) {
+      const tool = (server.tools || []).find(t => t.name === toolName);
+      if (tool) return { serverName: name, tool };
+    }
+    return null;
   }
 
   isAllConnected() {

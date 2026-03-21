@@ -686,19 +686,34 @@ function registerIpcHandlers(ipcMain) {
     try {
       const { providerRegistry } = require('./providers/provider-registry');
       const { ApiPtyEmitter } = require('./providers/api-pty-emitter');
+      const { McpBridge } = require('./mcp/mcp-bridge');
       const provider = providerRegistry.getProvider(providerId);
       if (!provider) throw new Error(`Unknown provider: ${providerId}`);
 
       // Create session if not exists
       await provider.createSession(sessionId, { model });
 
+      // Get MCP tools in provider-native format
+      let tools = [];
+      let toolHandler = null;
+      try {
+        const mcpManager = require('./mcp/mcp-manager');
+        if (mcpManager.instance) {
+          const bridge = new McpBridge(mcpManager.instance);
+          tools = bridge.getToolsForProvider(providerId === 'gemini' ? 'gemini' : 'openai');
+          toolHandler = bridge.createToolHandler();
+        }
+      } catch (e) {
+        console.warn('[provider:send] MCP bridge unavailable:', e.message);
+      }
+
       // Create emitter to stream output to renderer
       const emitter = new ApiPtyEmitter(event.sender, sessionId, providerId);
       const modelName = model || providerId;
 
-      // Stream the response
-      const generator = provider.sendMessage(sessionId, message);
-      await emitter.streamResponse(generator, modelName);
+      // Stream the response with tool execution support
+      const generator = provider.sendMessage(sessionId, message, tools);
+      await emitter.streamResponse(generator, modelName, toolHandler);
 
       return { success: true };
     } catch (e) {
