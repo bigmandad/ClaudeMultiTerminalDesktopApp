@@ -42,9 +42,13 @@ export function getSelectedProviders() {
 export async function fanOutPrompt(prompt, sessionId) {
   if (!_enabled || _selectedProviders.size === 0) return false;
 
+  // Build provider configs — Ollama entries use "ollama:modelname" format
   const providers = [..._selectedProviders].map(pid => {
-    const models = { openai: 'gpt-4o', gemini: 'gemini-2.5-pro', ollama: 'llama3.1' };
-    return { providerId: pid, model: models[pid] || 'default' };
+    if (pid.startsWith('ollama:')) {
+      return { providerId: 'ollama', model: pid.slice(7) };
+    }
+    const defaultModels = { openai: 'gpt-4o', gemini: 'gemini-2.5-pro', ollama: 'llama3.2' };
+    return { providerId: pid, model: defaultModels[pid] || 'default' };
   });
 
   showToast(`⚡ OmniMode: Sending to ${providers.length} providers...`, 'info');
@@ -136,19 +140,42 @@ async function refreshProviderChecks() {
     return;
   }
 
-  // Only show non-Claude API providers (Claude always runs via PTY)
-  const apiProviders = providers.filter(p => p.id !== 'claude');
+  // Build checkbox items — expand Ollama into individual models
+  const items = [];
+  for (const p of providers) {
+    if (p.id === 'claude') continue; // Claude always runs via PTY
+    if (p.id === 'ollama' && p.configured) {
+      // Fetch individual Ollama models and show each as a checkbox
+      try {
+        const models = await window.api.providers.models('ollama');
+        for (const m of models) {
+          items.push({
+            checkId: `ollama:${m.id}`,
+            name: `🦙 ${m.name}`,
+            color: p.color,
+            configured: true,
+            title: m.description || m.name,
+          });
+        }
+      } catch (e) {
+        // Fallback: show generic Ollama checkbox
+        items.push({ checkId: 'ollama', name: p.displayName, color: p.color, configured: true, title: 'Ollama (Local)' });
+      }
+    } else {
+      items.push({ checkId: p.id, name: p.displayName, color: p.color, configured: p.configured, title: p.displayName });
+    }
+  }
 
-  container.innerHTML = apiProviders.map(p => {
-    const checked = _selectedProviders.has(p.id) ? 'checked' : '';
-    const disabled = !p.configured ? 'disabled' : '';
-    const statusColor = p.configured ? p.color : '#555';
+  container.innerHTML = items.map(item => {
+    const checked = _selectedProviders.has(item.checkId) ? 'checked' : '';
+    const disabled = !item.configured ? 'disabled' : '';
+    const statusColor = item.configured ? item.color : '#555';
 
     return `
-      <label class="omni-provider-check" style="border-color: ${statusColor}" title="${p.displayName}${!p.configured ? ' (not configured)' : ''}">
-        <input type="checkbox" data-provider="${p.id}" ${checked} ${disabled}>
+      <label class="omni-provider-check" style="border-color: ${statusColor}" title="${item.title}${!item.configured ? ' (not configured)' : ''}">
+        <input type="checkbox" data-provider="${item.checkId}" ${checked} ${disabled}>
         <span class="omni-provider-dot" style="background: ${statusColor}"></span>
-        <span class="omni-provider-name">${p.displayName}</span>
+        <span class="omni-provider-name">${item.name}</span>
       </label>
     `;
   }).join('');

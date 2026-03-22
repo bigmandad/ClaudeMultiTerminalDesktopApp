@@ -59,6 +59,19 @@ async function initDatabase() {
 
   const localPath = getLocalDbPath();
 
+  // Fix stale replica: if db file exists but metadata file doesn't, remove the db
+  const metaPath = localPath + '-info';
+  if (fs.existsSync(localPath) && !fs.existsSync(metaPath)) {
+    console.warn('[TursoDB] Stale replica detected (db exists, metadata missing) — resetting');
+    try {
+      fs.unlinkSync(localPath);
+      if (fs.existsSync(localPath + '-shm')) fs.unlinkSync(localPath + '-shm');
+      if (fs.existsSync(localPath + '-wal')) fs.unlinkSync(localPath + '-wal');
+    } catch (e) {
+      console.warn('[TursoDB] Could not remove stale replica:', e.message);
+    }
+  }
+
   if (TURSO_URL && TURSO_TOKEN) {
     // Embedded replica mode: local file with cloud sync
     client = createClient({

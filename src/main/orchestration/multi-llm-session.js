@@ -20,10 +20,13 @@ class MultiLlmSession {
 
   _initSubSessions() {
     for (const config of this.providerConfigs) {
-      const subId = `${this.sessionId}__${config.providerId}`;
+      // Use providerId:model as key to support multiple models from same provider (e.g. ollama)
+      const key = `${config.providerId}:${config.model}`;
+      const subId = `${this.sessionId}__${config.providerId}__${config.model}`;
       const emitter = new ApiPtyEmitter(this.webContents, subId, config.providerId);
-      this.subSessions.set(config.providerId, {
+      this.subSessions.set(key, {
         sessionId: subId,
+        providerId: config.providerId,
         model: config.model,
         emitter,
         status: 'idle',
@@ -42,11 +45,11 @@ class MultiLlmSession {
     const startTime = Date.now();
     const promises = [];
 
-    for (const [providerId, sub] of this.subSessions) {
-      const provider = providerRegistry.getProvider(providerId);
+    for (const [key, sub] of this.subSessions) {
+      const provider = providerRegistry.getProvider(sub.providerId);
       if (!provider) {
         sub.status = 'error';
-        sub.response = `Provider ${providerId} not available`;
+        sub.response = `Provider ${sub.providerId} not available`;
         continue;
       }
 
@@ -104,7 +107,7 @@ class MultiLlmSession {
         }
 
         return {
-          providerId,
+          providerId: sub.providerId,
           model: sub.model,
           response: sub.response,
           status: sub.status,
@@ -126,8 +129,8 @@ class MultiLlmSession {
    * Get collected responses for peer review.
    */
   getResponses() {
-    return [...this.subSessions.entries()].map(([providerId, sub]) => ({
-      providerId,
+    return [...this.subSessions.entries()].map(([key, sub]) => ({
+      providerId: sub.providerId,
       model: sub.model,
       response: sub.response,
       status: sub.status,
@@ -139,11 +142,11 @@ class MultiLlmSession {
    * Get sub-session IDs for the renderer to create sub-panes.
    */
   getSubSessionIds() {
-    return [...this.subSessions.entries()].map(([providerId, sub]) => ({
-      providerId,
+    return [...this.subSessions.entries()].map(([key, sub]) => ({
+      providerId: sub.providerId,
       sessionId: sub.sessionId,
       model: sub.model,
-      color: providerRegistry.getProvider(providerId)?.uiColor || '#ccc',
+      color: providerRegistry.getProvider(sub.providerId)?.uiColor || '#ccc',
     }));
   }
 
@@ -151,8 +154,8 @@ class MultiLlmSession {
    * Cancel all in-flight generations.
    */
   cancelAll() {
-    for (const [providerId, sub] of this.subSessions) {
-      const provider = providerRegistry.getProvider(providerId);
+    for (const [key, sub] of this.subSessions) {
+      const provider = providerRegistry.getProvider(sub.providerId);
       if (provider) provider.cancelGeneration(sub.sessionId);
       sub.status = 'cancelled';
     }
@@ -162,8 +165,8 @@ class MultiLlmSession {
    * Destroy all sub-sessions.
    */
   destroy() {
-    for (const [providerId, sub] of this.subSessions) {
-      const provider = providerRegistry.getProvider(providerId);
+    for (const [key, sub] of this.subSessions) {
+      const provider = providerRegistry.getProvider(sub.providerId);
       if (provider) provider.destroy(sub.sessionId);
     }
     this.subSessions.clear();

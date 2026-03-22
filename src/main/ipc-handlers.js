@@ -623,7 +623,9 @@ function registerIpcHandlers(ipcMain) {
 
     try {
       // git pull from origin
-      const pullResult = run('git pull --ff-only origin main', { timeout: 30000 });
+      // Set rebase as default pull strategy, then pull
+      try { run('git config pull.rebase true'); } catch (_) { /* already set */ }
+      const pullResult = run('git pull origin main', { timeout: 30000 });
 
       if (pullResult.includes('Already up to date')) {
         return { updated: false, message: 'Already up to date' };
