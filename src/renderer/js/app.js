@@ -37,6 +37,7 @@ import { initAutoResearchPanel } from './autoresearch/autoresearch-panel.js';
 import { initActivityPanel } from './activity/activity-panel.js';
 import { showSetupWizard } from './setup/setup-wizard-panel.js';
 import { initProviderPanel } from './providers/provider-panel.js';
+import { initOmniMode } from './omnimode/omni-mode.js';
 
 // ── Initialize ────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ async function initApp() {
   initAutoResearchPanel();
   initActivityPanel();
   initProviderPanel();
+  initOmniMode();
 
   // Tab key prevention on ALL inputs globally
   document.addEventListener('keydown', (e) => {

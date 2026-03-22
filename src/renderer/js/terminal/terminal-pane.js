@@ -97,9 +97,28 @@ export class TerminalPane {
     this.resizeObserver.observe(this.terminalContainer);
 
     // Terminal data -> PTY stdin (for direct typing in terminal)
+    // Also intercept Enter for OmniMode parallel fan-out
+    this._inputBuffer = '';
     this.terminal.onData((data) => {
       if (this.sessionId) {
         window.api.pty.write(this.sessionId, data);
+
+        // Track input for OmniMode: buffer keystrokes, fan out on Enter
+        if (data === '\r' || data === '\n') {
+          const prompt = this._inputBuffer.trim();
+          this._inputBuffer = '';
+          if (prompt && window.__omniMode && window.__omniMode.isEnabled()) {
+            window.__omniMode.fanOut(prompt, this.sessionId);
+          }
+        } else if (data === '\x7f' || data === '\b') {
+          // Backspace
+          this._inputBuffer = this._inputBuffer.slice(0, -1);
+        } else if (data.length === 1 && data.charCodeAt(0) >= 32) {
+          this._inputBuffer += data;
+        } else if (data.length > 1 && !data.startsWith('\x1b')) {
+          // Pasted text
+          this._inputBuffer += data;
+        }
       }
     });
 
