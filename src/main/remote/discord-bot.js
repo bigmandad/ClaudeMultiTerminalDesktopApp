@@ -112,6 +112,7 @@ async function start(token) {
 
     // Register output handler with messaging bridge
     registerOutputHandler();
+    registerPermissionHandler();
 
     isConnecting = false;
     broadcastStatus(true);
@@ -1395,6 +1396,71 @@ function registerOutputHandler() {
 
     } catch (err) {
       error('[DiscordBot] Failed to send output to channel:', err.message);
+    }
+  });
+}
+
+// ── Permission Handler — Reaction-based approval ──────────
+
+function registerPermissionHandler() {
+  messagingBridge.registerPermissionCallback('discord', async (channelId, promptText, sessionId) => {
+    if (!client || !client.isReady()) return;
+
+    try {
+      const channel = await client.channels.fetch(channelId);
+      if (!channel) return;
+
+      const { EmbedBuilder } = require('discord.js');
+      const embed = new EmbedBuilder()
+        .setColor(0xCC9966)
+        .setTitle('🔐 Permission Required')
+        .setDescription(promptText.slice(0, 200))
+        .addFields(
+          { name: 'React to respond', value: '✅ = **Approve** (Yes)\n❌ = **Deny** (No)', inline: false }
+        )
+        .setFooter({ text: 'Waiting for your response...' })
+        .setTimestamp();
+
+      const msg = await channel.send({ embeds: [embed] });
+      await msg.react('✅');
+      await msg.react('❌');
+
+      // Wait for reaction (60 second timeout)
+      const filter = (reaction, user) => {
+        return ['✅', '❌'].includes(reaction.emoji.name) && user.id !== client.user.id;
+      };
+
+      try {
+        const collected = await msg.awaitReactions({ filter, max: 1, time: 60000, errors: ['time'] });
+        const reaction = collected.first();
+        const approved = reaction.emoji.name === '✅';
+
+        messagingBridge.respondToPermission('discord', channelId, approved);
+
+        // Update the embed to show the decision
+        const updatedEmbed = EmbedBuilder.from(embed)
+          .setColor(approved ? 0x7AB87A : 0xB87A7A)
+          .setTitle(approved ? '✅ Approved' : '❌ Denied')
+          .setFooter({ text: `Responded by ${reaction.users.cache.filter(u => u.id !== client.user.id).first()?.tag || 'user'}` });
+
+        await msg.edit({ embeds: [updatedEmbed] });
+        await msg.reactions.removeAll().catch(() => {});
+
+      } catch (timeoutErr) {
+        // Timeout — auto-deny
+        messagingBridge.respondToPermission('discord', channelId, false);
+
+        const timeoutEmbed = EmbedBuilder.from(embed)
+          .setColor(0xB87A7A)
+          .setTitle('⏰ Timed Out — Auto-Denied')
+          .setFooter({ text: 'No response received within 60 seconds' });
+
+        await msg.edit({ embeds: [timeoutEmbed] });
+        await msg.reactions.removeAll().catch(() => {});
+      }
+
+    } catch (err) {
+      error('[DiscordBot] Permission handler failed:', err.message);
     }
   });
 }
