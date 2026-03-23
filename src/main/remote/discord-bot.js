@@ -1497,11 +1497,9 @@ function registerPermissionHandler() {
 }
 
 /**
- * Format CLI output as a rich Discord embed with:
- * - ANSI-colored code blocks (Discord supports `ansi` language tag)
- * - A summary description for longer outputs
- * - File attachment fallback for very long output (>4000 chars)
- * - Metadata footer with char count
+ * Format CLI output as Discord message(s).
+ * Splits long output into multiple sequential embeds (max 10 per message).
+ * Each chunk fits within Discord's 4096-char embed description limit.
  */
 function formatRichOutput(rawText) {
   const text = rawText.trim();
@@ -1510,58 +1508,96 @@ function formatRichOutput(rawText) {
   const summary = generateSummary(text);
   const outputLength = text.length;
 
-  // Very long output (>4000 chars): attach as .md file + summary embed
-  if (outputLength > 4000) {
-    const attachment = new AttachmentBuilder(
-      Buffer.from(text, 'utf-8'),
-      { name: `output-${Date.now()}.md` }
-    );
-
-    const preview = text.slice(-800); // last 800 chars as preview
-    const embed = new EmbedBuilder()
-      .setColor(EMBED_COLOR)
-      .setDescription(
-        `**Summary:** ${summary}\n\n` +
-        `*Full output attached as file.*\n\n` +
-        `**Preview** (last 800 chars):\n` +
-        `\`\`\`ansi\n${colorizeAnsi(preview)}\n\`\`\``
-      )
-      .setFooter({ text: `${outputLength} chars total` });
-
-    return { embeds: [embed], files: [attachment] };
-  }
-
-  // Build the code block content (truncate if over embed limit)
-  const maxCodeBlock = 1800;
-  let codeContent = text;
-  let truncated = false;
-
-  if (codeContent.length > maxCodeBlock) {
-    codeContent = codeContent.slice(-maxCodeBlock);
-    truncated = true;
-  }
-
-  // Short output (<=300 chars): simple code block embed
-  if (outputLength <= 300) {
+  // Short output (<=1800 chars): single clean embed
+  if (outputLength <= 1800) {
     return {
       embeds: [new EmbedBuilder()
         .setColor(EMBED_COLOR)
-        .setDescription(`\`\`\`ansi\n${colorizeAnsi(codeContent)}\n\`\`\``)
+        .setDescription(`**Summary:** ${summary}\n\n\`\`\`ansi\n${colorizeAnsi(text)}\n\`\`\``)
         .setFooter({ text: `${outputLength} chars` })
       ]
     };
   }
 
-  // Medium output: summary + ansi code block
-  const embed = new EmbedBuilder()
-    .setColor(EMBED_COLOR)
-    .setDescription(
-      `**Summary:** ${summary}\n\n` +
-      `\`\`\`ansi\n${colorizeAnsi(codeContent)}\n\`\`\``
-    )
-    .setFooter({ text: `${truncated ? '(truncated) ' : ''}${outputLength} chars` });
+  // Longer output: split into chunks and send as multiple embeds
+  // Discord allows up to 10 embeds per message, 4096 chars per embed description
+  // Reserve ~100 chars for code block markers + formatting
+  const CHUNK_SIZE = 1800;
+  const chunks = splitIntoChunks(text, CHUNK_SIZE);
 
-  return { embeds: [embed] };
+  // Cap at 10 embeds (Discord limit)
+  const maxChunks = Math.min(chunks.length, 10);
+  const embeds = [];
+
+  for (let i = 0; i < maxChunks; i++) {
+    const chunk = chunks[i];
+    const isFirst = i === 0;
+    const isLast = i === maxChunks - 1;
+
+    const embed = new EmbedBuilder().setColor(EMBED_COLOR);
+
+    if (isFirst) {
+      embed.setDescription(`**Summary:** ${summary}\n\n\`\`\`ansi\n${colorizeAnsi(chunk)}\n\`\`\``);
+    } else {
+      embed.setDescription(`\`\`\`ansi\n${colorizeAnsi(chunk)}\n\`\`\``);
+    }
+
+    if (isLast) {
+      const truncNote = maxChunks < chunks.length ? ` (showing ${maxChunks}/${chunks.length} segments)` : '';
+      embed.setFooter({ text: `${outputLength} chars total${truncNote}` });
+    }
+
+    embeds.push(embed);
+  }
+
+  // If there are MORE than 10 chunks, attach the full output as a file too
+  const result = { embeds };
+  if (chunks.length > 10) {
+    result.files = [new AttachmentBuilder(
+      Buffer.from(text, 'utf-8'),
+      { name: `full-output-${Date.now()}.md` }
+    )];
+  }
+
+  return result;
+}
+
+/**
+ * Split text into chunks at natural line boundaries.
+ * Tries to break at paragraph boundaries (\n\n), then line boundaries (\n).
+ */
+function splitIntoChunks(text, maxLen) {
+  const chunks = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+
+    // Try to split at a double-newline (paragraph break) within the chunk
+    let splitIdx = remaining.lastIndexOf('\n\n', maxLen);
+    if (splitIdx > maxLen * 0.3) {
+      chunks.push(remaining.slice(0, splitIdx).trimEnd());
+      remaining = remaining.slice(splitIdx + 2).trimStart();
+      continue;
+    }
+
+    // Fall back to single newline
+    splitIdx = remaining.lastIndexOf('\n', maxLen);
+    if (splitIdx > maxLen * 0.3) {
+      chunks.push(remaining.slice(0, splitIdx).trimEnd());
+      remaining = remaining.slice(splitIdx + 1).trimStart();
+      continue;
+    }
+
+    // Hard split at maxLen if no good break point
+    chunks.push(remaining.slice(0, maxLen));
+    remaining = remaining.slice(maxLen);
+  }
+
+  return chunks;
 }
 
 /**
