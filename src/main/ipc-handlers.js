@@ -256,6 +256,11 @@ function registerIpcHandlers(ipcMain) {
 
   ipcMain.handle('session:delete', (event, id) => {
     db.sessions.delete(id);
+    // Clean up Discord channel if one exists for this session
+    try {
+      const { deleteSessionChannel } = require('./remote/discord-bot');
+      deleteSessionChannel(id).catch(() => {});
+    } catch (e) { /* discord bot not loaded */ }
     return { success: true };
   });
 
