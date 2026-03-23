@@ -336,6 +336,93 @@ function flushBatch(platform, channelId, batch) {
   }
 }
 
+// ── Permission prompt detection ──
+// Tracks pending permission prompts so platforms can handle them via reactions
+const pendingPermissions = new Map(); // "platform:channelId" -> { sessionId, prompt }
+
+// Permission prompt callbacks: platform -> (channelId, promptText, sessionId) => void
+const permissionCallbacks = new Map();
+
+function registerPermissionCallback(platform, callback) {
+  permissionCallbacks.set(platform, callback);
+}
+
+/**
+ * Detect Claude CLI permission prompts in raw data.
+ * Returns the prompt text if found, null otherwise.
+ */
+function detectPermissionPrompt(rawData) {
+  const stripped = rawData.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '');
+
+  // "Do you want to proceed?" pattern
+  if (/Do you want to proceed/i.test(stripped)) {
+    return stripped.match(/[^\n]*Do you want to proceed[^\n]*/i)?.[0]?.trim() || 'Do you want to proceed?';
+  }
+
+  // "[Y/n]" or "[y/N]" permission patterns
+  if (/\[Y\/n\]|\[y\/N\]/i.test(stripped)) {
+    const match = stripped.match(/[^\n]*\[Y\/n\][^\n]*|[^\n]*\[y\/N\][^\n]*/i);
+    return match?.[0]?.trim() || 'Permission required';
+  }
+
+  // "Allow" / "Deny" / permission selector
+  if (/Allow\s+once|Allow\s+always|Deny/i.test(stripped)) {
+    // Find the context line above Allow/Deny
+    const lines = stripped.split('\n').filter(l => l.trim());
+    const allowIdx = lines.findIndex(l => /Allow|Deny/i.test(l));
+    if (allowIdx > 0) {
+      return lines[allowIdx - 1]?.trim() || 'Permission required';
+    }
+    return 'Permission required';
+  }
+
+  // "1. Yes  2. No" pattern
+  if (/1\.\s*Yes.*2\.\s*No/s.test(stripped) || />\s*1\.\s*Yes/i.test(stripped)) {
+    const lines = stripped.split('\n').filter(l => l.trim());
+    const yesIdx = lines.findIndex(l => /1\.\s*Yes/i.test(l));
+    if (yesIdx > 0) {
+      return lines.slice(Math.max(0, yesIdx - 3), yesIdx).join(' ').trim() || 'Approval needed';
+    }
+    return 'Approval needed';
+  }
+
+  return null;
+}
+
+/**
+ * Respond to a pending permission prompt.
+ * @param {string} platform
+ * @param {string} channelId
+ * @param {boolean} approved - true = Yes, false = No
+ */
+function respondToPermission(platform, channelId, approved) {
+  const key = `${platform}:${channelId}`;
+  const pending = pendingPermissions.get(key);
+  if (!pending) return false;
+
+  pendingPermissions.delete(key);
+
+  try {
+    const ptySession = PtyManager.get(pending.sessionId);
+    if (!ptySession || !ptySession.process) return false;
+
+    // Send the appropriate keystroke
+    if (approved) {
+      // Press Enter (Yes is usually the default/highlighted option)
+      PtyManager.write(pending.sessionId, '\r');
+    } else {
+      // Navigate to No and press Enter
+      PtyManager.write(pending.sessionId, '\x1b[B\r'); // Arrow Down + Enter
+    }
+
+    console.log(`[MessagingBridge] Permission ${approved ? 'APPROVED' : 'DENIED'} via ${platform}:${channelId}`);
+    return true;
+  } catch (e) {
+    console.error('[MessagingBridge] Permission response failed:', e.message);
+    return false;
+  }
+}
+
 function dispatchOutput(sessionId, rawData) {
   refreshBindingsCache();
 
@@ -350,16 +437,30 @@ function dispatchOutput(sessionId, rawData) {
   }
 
   // Feed raw PTY data into the VT buffer.
-  // This correctly interprets cursor positioning, screen clears, etc.
-  // The VT buffer now reflects the current state of the terminal screen.
   vt.write(rawData);
+
+  // Check for permission prompts BEFORE normal output processing
+  const permissionPrompt = detectPermissionPrompt(rawData);
+  if (permissionPrompt) {
+    for (const { platform, channelId } of bindings) {
+      const key = `${platform}:${channelId}`;
+      pendingPermissions.set(key, { sessionId, prompt: permissionPrompt });
+
+      const permCb = permissionCallbacks.get(platform);
+      if (permCb) {
+        try {
+          permCb(channelId, permissionPrompt, sessionId);
+        } catch (e) {
+          console.error(`[MessagingBridge] Permission callback failed:`, e.message);
+        }
+      }
+    }
+    return; // Don't dispatch permission prompts as normal output
+  }
 
   // Check for prompt signal in the raw data
   const promptDetected = hasPromptSignal(rawData);
-
-  // Also check the VT screen for prompt
   const vtPrompt = vt.hasPrompt();
-
   const isPrompt = promptDetected || vtPrompt;
 
   for (const { platform, channelId } of bindings) {
@@ -379,10 +480,8 @@ function dispatchOutput(sessionId, rawData) {
 
     // ── Flush strategy ──
     if (batch.promptDetected) {
-      // Prompt detected = response is complete → quick flush
       batch.timer = setTimeout(() => flushBatch(platform, channelId, batch), PROMPT_FLUSH);
     } else {
-      // Default: flush after silence (wait for more output)
       batch.timer = setTimeout(() => flushBatch(platform, channelId, batch), FLUSH_DELAY);
     }
   }
