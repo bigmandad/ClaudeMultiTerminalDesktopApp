@@ -448,16 +448,24 @@ async function deleteSessionChannel(sessionId) {
     if (client && client.isReady()) {
       const channel = await client.channels.fetch(mapping.channelId).catch(() => null);
       if (channel) {
+        // Send goodbye message, wait briefly, then delete the channel
         await channel.send({
           embeds: [new EmbedBuilder()
             .setTitle('Session Ended')
             .setColor(ERROR_COLOR)
-            .setDescription('This session has been disconnected. This channel will be archived.')
+            .setDescription('This session has been closed. Channel will be deleted in 5 seconds.')
             .setTimestamp()
           ]
         });
-        // Don't delete the channel — just archive it by removing from category
-        // The user can delete manually or the channel serves as a log
+        // Brief delay so the user can see the message
+        setTimeout(async () => {
+          try {
+            await channel.delete('OmniClaw session closed');
+            log(`[DiscordBot] Deleted channel #${channel.name} for ended session`);
+          } catch (delErr) {
+            warn(`[DiscordBot] Could not delete channel:`, delErr.message);
+          }
+        }, 5000);
       }
     }
   } catch (err) {
@@ -539,6 +547,9 @@ async function spawnSessionPty(sessionId, session) {
 
     // Mark session as stopped in DB
     try { db.sessions.update(sessionId, { status: 'stopped' }); } catch (e) { /* non-fatal */ }
+
+    // Delete the Discord channel for this session
+    deleteSessionChannel(sessionId).catch(() => {});
 
     // Refresh lobby status to show updated state
     refreshAllLobbyStatus().catch(() => {});
