@@ -612,9 +612,11 @@ function registerIpcHandlers(ipcMain) {
 
   ipcMain.handle('app:update', async () => {
     const { execSync } = require('child_process');
+    // __dirname is src/main/ — go up 2 levels to repo root
+    // For packaged app (app.asar), go up 3 levels
     const appDir = __dirname.includes('app.asar')
-      ? path.resolve(__dirname, '..', '..')
-      : path.resolve(__dirname, '..');
+      ? path.resolve(__dirname, '..', '..', '..')
+      : path.resolve(__dirname, '..', '..');
 
     // On macOS, run commands through login shell to get full PATH
     const run = (cmd, opts = {}) => {
