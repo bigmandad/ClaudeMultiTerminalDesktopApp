@@ -110,10 +110,43 @@ function stripCliChrome(text) {
       // Claude CLI version/startup banner
       if (/^claude\s+v?\d+\.\d+/i.test(trimmed)) return false;
       if (/^Claude Code\s/i.test(trimmed)) return false;
-      if (/^Tips:/i.test(trimmed)) return false;
+      if (/^Tips?:/i.test(trimmed)) return false;
+      if (/^Tip:/i.test(trimmed)) return false;
 
       // "Tool result" headers
       if (/^(Tool result|Output|Result|Input):\s*$/i.test(trimmed)) return false;
+
+      // Searched/recalled/tool summaries (metadata lines, not content)
+      if (/^Searched for \d+ pattern/i.test(trimmed)) return false;
+      if (/recalled \d+ memor/i.test(trimmed)) return false;
+      if (/ctrl\+o to expand/i.test(trimmed)) return false;
+      if (/^\d+ tool operation/i.test(trimmed)) return false;
+
+      // Churning / timing lines
+      if (/^[✻✦⊹*]\s*(Churned?|Ionizing|Ionized)/i.test(trimmed)) return false;
+      if (/^Churned? for \d+/i.test(trimmed)) return false;
+
+      // Stop hook / session lifecycle noise
+      if (/running stop hook/i.test(trimmed)) return false;
+      if (/double-tap esc/i.test(trimmed)) return false;
+      if (/rewind.*code.*conversation/i.test(trimmed)) return false;
+      if (/without interrupt/i.test(trimmed)) return false;
+      if (/quick.*question.*without.*interrupt/i.test(trimmed)) return false;
+      if (/^bypass permissions/i.test(trimmed)) return false;
+      if (/dangerously skip/i.test(trimmed)) return false;
+
+      // Share Claude Code / referral noise
+      if (/Share Claude Code/i.test(trimmed)) return false;
+      if (/earn \$\d+ of extra/i.test(trimmed)) return false;
+
+      // Opus / model badge lines
+      if (/^Opus\s+\d+\.\d+/i.test(trimmed)) return false;
+      if (/^\d+[kK]?\s+context/i.test(trimmed)) return false;
+      if (/^Claude Max/i.test(trimmed)) return false;
+
+      // /passes, /compact, /clear and other slash command artifacts
+      if (/^\/ ?passes\s*$/i.test(trimmed)) return false;
+      if (/^\/ ?(compact|clear|resume|continue)\s*$/i.test(trimmed)) return false;
 
       // Lines that are ONLY control chars / whitespace / special Unicode
       if (/^[\s\x00-\x1f\u200b-\u200f\ufeff]+$/.test(trimmed)) return false;
