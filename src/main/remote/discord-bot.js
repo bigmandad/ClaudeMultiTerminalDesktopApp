@@ -182,19 +182,39 @@ function broadcastStatus(connected) {
  */
 function botPermissionOverwrites(guild) {
   if (!client || !client.user) return [];
-  return [{
-    id: client.user.id,
-    allow: [
-      PermissionsBitField.Flags.ViewChannel,
-      PermissionsBitField.Flags.SendMessages,
-      PermissionsBitField.Flags.ReadMessageHistory,
-      PermissionsBitField.Flags.ManageMessages,
-      PermissionsBitField.Flags.EmbedLinks,
-      PermissionsBitField.Flags.AttachFiles,
-      PermissionsBitField.Flags.AddReactions,
-      PermissionsBitField.Flags.ManageChannels
-    ]
-  }];
+  return [
+    {
+      // Deny @everyone — makes the channel private
+      id: guild.id,
+      deny: [
+        PermissionsBitField.Flags.ViewChannel,
+      ]
+    },
+    {
+      // Allow the bot full access
+      id: client.user.id,
+      allow: [
+        PermissionsBitField.Flags.ViewChannel,
+        PermissionsBitField.Flags.SendMessages,
+        PermissionsBitField.Flags.ReadMessageHistory,
+        PermissionsBitField.Flags.ManageMessages,
+        PermissionsBitField.Flags.EmbedLinks,
+        PermissionsBitField.Flags.AttachFiles,
+        PermissionsBitField.Flags.AddReactions,
+        PermissionsBitField.Flags.ManageChannels
+      ]
+    },
+    {
+      // Allow the server owner (you) to see the channels
+      id: guild.ownerId,
+      allow: [
+        PermissionsBitField.Flags.ViewChannel,
+        PermissionsBitField.Flags.SendMessages,
+        PermissionsBitField.Flags.ReadMessageHistory,
+        PermissionsBitField.Flags.AddReactions,
+      ]
+    }
+  ];
 }
 
 /**
