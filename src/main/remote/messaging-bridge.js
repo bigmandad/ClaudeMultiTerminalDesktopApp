@@ -536,6 +536,8 @@ function listSessions() {
 module.exports = {
   registerPlatform,
   unregisterPlatform,
+  registerPermissionCallback,
+  respondToPermission,
   bindChannel,
   unbindChannel,
   getBinding,
