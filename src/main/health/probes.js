@@ -1,11 +1,40 @@
 // ── Watchdog Health Probes ─────────────────────────────────
-// Each probe: { name, label, check() → {status, message, fixable}, fix() }
+//
+// Probe contract:
+//   {
+//     name:    string         (unique identifier)
+//     label:   string         (human-readable)
+//     check:   async () => { status: 'healthy'|'degraded'|'down', message, fixable, ...extras }
+//     fix?:    async (probeResult, ctx) => { success, message }
+//     liveness?: async () => boolean   (optional: is this thing MAKING PROGRESS, not just responding?)
+//     destructiveFix?: boolean         (true if fix() mutates external state — counted for back-pressure)
+//   }
+//
+// Additional probes can be registered at runtime via registerProbe(probe).
+// The createProbes() function returns the built-in set; registerProbe lets
+// plugins / experimental modules add their own without modifying this file.
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
+
+const _extraProbes = [];
+
+/**
+ * Register an additional probe at runtime. Returns a deregistration function.
+ */
+function registerProbe(probe) {
+  if (!probe || typeof probe.check !== 'function' || !probe.name || !probe.label) {
+    throw new Error('Invalid probe — needs { name, label, check }');
+  }
+  _extraProbes.push(probe);
+  return () => {
+    const idx = _extraProbes.indexOf(probe);
+    if (idx >= 0) _extraProbes.splice(idx, 1);
+  };
+}
 
 function httpCheck(url, timeoutMs = 3000) {
   return new Promise((resolve) => {
@@ -118,11 +147,11 @@ function createProbes(deps) {
           return { status: 'healthy', message: 'Local-only mode', fixable: false };
         }
         // Check if sync is recent (within 5 min)
-        if (db && db.get) {
+        if (db && db.appState) {
           try {
-            const row = db.get("SELECT value FROM app_state WHERE key = 'last_turso_sync'");
-            if (row && row.value) {
-              const lastSync = new Date(row.value);
+            const lastSyncRaw = db.appState.get('last_turso_sync');
+            if (lastSyncRaw) {
+              const lastSync = new Date(lastSyncRaw);
               const ageMin = (Date.now() - lastSync.getTime()) / 60000;
               if (ageMin < 5) return { status: 'healthy', message: `Synced ${Math.round(ageMin)}m ago`, fixable: false };
               return { status: 'degraded', message: `Last sync ${Math.round(ageMin)}m ago`, fixable: true };
@@ -160,9 +189,9 @@ function createProbes(deps) {
           return { status: 'down', message: 'Database file missing', fixable: false };
         }
         // Check DB is accessible
-        if (db && db.get) {
+        if (db && db.raw) {
           try {
-            const result = db.get("PRAGMA integrity_check(1)");
+            const result = db.raw().prepare('PRAGMA integrity_check(1)').get();
             if (result && result.integrity_check === 'ok') {
               return { status: 'healthy', message: 'Integrity OK', fixable: false };
             }
@@ -175,9 +204,9 @@ function createProbes(deps) {
       },
       fix: async () => {
         console.log('[Watchdog] Running WAL checkpoint...');
-        if (db && db.run) {
+        if (db && db.raw) {
           try {
-            db.run("PRAGMA wal_checkpoint(PASSIVE)");
+            db.raw().prepare('PRAGMA wal_checkpoint(PASSIVE)').run();
             return { success: true, message: 'WAL checkpoint complete' };
           } catch (e) {
             return { success: false, message: e.message };
@@ -389,4 +418,142 @@ function createProbes(deps) {
   ];
 }
 
-module.exports = { createProbes };
+// ── New probes from C-REL-2 (coverage gaps) ─────────────────
+function _coreProbes(deps) {
+  const { db } = deps;
+  const homeDir = os.homedir();
+
+  return [
+    // Native modules — the better-sqlite3 / node-pty binaries can mismatch
+    // Electron's ABI after a `npm install`. Surface this so the user sees a
+    // toast instead of a silent crash.
+    {
+      name: 'native-modules',
+      label: 'Native Modules',
+      check: async () => {
+        const missing = [];
+        try { require('better-sqlite3'); } catch (e) { missing.push(`better-sqlite3: ${e.code || e.message}`); }
+        try { require('@homebridge/node-pty-prebuilt-multiarch'); } catch (e) { missing.push(`node-pty: ${e.code || e.message}`); }
+        if (missing.length === 0) return { status: 'healthy', message: 'All native modules loaded', fixable: false };
+        return { status: 'down', message: missing.join('; '), fixable: false };
+      },
+    },
+
+    // Disk space — the app writes transcripts, vector DB, autoresearch
+    // results to ~/.omniclaw and ~/.openviking. Running out of space causes
+    // silent write failures.
+    {
+      name: 'disk-space',
+      label: 'Disk Space',
+      check: async () => {
+        try {
+          // statfs is Node 18.15+; fall back gracefully if unavailable.
+          if (typeof fs.statfsSync !== 'function') {
+            return { status: 'healthy', message: 'statfs unavailable, skipped', fixable: false };
+          }
+          const stats = fs.statfsSync(homeDir);
+          const freeGB = (stats.bavail * stats.bsize) / 1e9;
+          const totalGB = (stats.blocks * stats.bsize) / 1e9;
+          const pctFree = (freeGB / totalGB) * 100;
+          if (freeGB < 1) return { status: 'down',     message: `${freeGB.toFixed(2)}GB free (<1GB)`, fixable: false };
+          if (pctFree < 5) return { status: 'degraded', message: `${freeGB.toFixed(1)}GB free (${pctFree.toFixed(0)}% — <5%)`, fixable: false };
+          return { status: 'healthy', message: `${freeGB.toFixed(1)}GB free`, fixable: false };
+        } catch (e) {
+          return { status: 'healthy', message: `disk check skipped: ${e.message}`, fixable: false };
+        }
+      },
+    },
+
+    // Claude CLI present + authenticated. Without this, every session that
+    // tries to launch Claude fails — but the failure shows up as a PTY exit,
+    // not as a clear status.
+    {
+      name: 'claude-cli',
+      label: 'Claude CLI',
+      check: async () => {
+        try {
+          const cmd = process.platform === 'win32' ? 'where claude' : 'which claude';
+          const out = execSync(cmd, { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+          if (!out) return { status: 'down', message: 'claude not on PATH', fixable: false };
+          return { status: 'healthy', message: out.split('\n')[0], fixable: false };
+        } catch (_) {
+          return { status: 'down', message: 'claude not found on PATH', fixable: false };
+        }
+      },
+    },
+
+    // Discord bot connection liveness. Token presence alone doesn't tell us
+    // if the bot is actually connected to Discord's gateway right now.
+    {
+      name: 'discord-bot',
+      label: 'Discord Bot',
+      check: async () => {
+        try {
+          const token = db?.appState?.get('discord_bot_token');
+          if (!token) return { status: 'healthy', message: 'Not configured', fixable: false };
+          // Reach into the discord-bot module's status — cheap probe.
+          let bot;
+          try { bot = require('../remote/discord-bot'); } catch (_) { return { status: 'healthy', message: 'Module not loaded', fixable: false }; }
+          const status = typeof bot.getStatus === 'function' ? bot.getStatus() : null;
+          if (status && status.connected) return { status: 'healthy', message: `Connected as ${status.tag || 'bot'}`, fixable: false };
+          return { status: 'degraded', message: 'Token set but bot not connected', fixable: false };
+        } catch (e) {
+          return { status: 'healthy', message: `Probe skipped: ${e.message}`, fixable: false };
+        }
+      },
+    },
+  ];
+}
+
+// ── Liveness probes from C-REL-3 ─────────────────────────────
+function _livenessProbes(deps) {
+  const { db } = deps;
+  return [
+    // AutoResearch liveness: if any target is `status='running'` but has had
+    // no experiment recorded in the last 15 minutes, mark it degraded. This
+    // catches the case where the loop is technically alive but stuck.
+    {
+      name: 'autoresearch-progress',
+      label: 'AutoResearch Progress',
+      check: async () => {
+        try {
+          if (!db || !db.raw) return { status: 'healthy', message: 'db.raw unavailable', fixable: false };
+          const running = db.raw().prepare("SELECT id FROM research_targets WHERE status = 'running'").all();
+          if (running.length === 0) return { status: 'healthy', message: 'No active research', fixable: false };
+          const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+          const stalled = [];
+          for (const t of running) {
+            const recent = db.raw().prepare(
+              "SELECT COUNT(1) AS c FROM experiments WHERE target_id = ? AND created_at > ?"
+            ).get(t.id, cutoff);
+            if (!recent || recent.c === 0) stalled.push(t.id);
+          }
+          if (stalled.length > 0) {
+            return { status: 'degraded', message: `${stalled.length} target(s) stalled >15min: ${stalled.join(', ')}`, fixable: false };
+          }
+          return { status: 'healthy', message: `${running.length} target(s) producing experiments`, fixable: false };
+        } catch (e) {
+          return { status: 'healthy', message: `Probe skipped: ${e.message}`, fixable: false };
+        }
+      },
+    },
+  ];
+}
+
+const _originalCreateProbes = createProbes;
+
+/**
+ * Compose the full probe set: built-ins + coverage-gap probes + liveness
+ * probes + any registered via registerProbe(). Order is intentional —
+ * built-ins first so they appear at the top of the watchdog panel.
+ */
+function createAllProbes(deps) {
+  return [
+    ..._originalCreateProbes(deps),
+    ..._coreProbes(deps),
+    ..._livenessProbes(deps),
+    ..._extraProbes,
+  ];
+}
+
+module.exports = { createProbes: createAllProbes, registerProbe };

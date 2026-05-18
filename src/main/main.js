@@ -72,6 +72,22 @@ for (const stream of [process.stdout, process.stderr]) {
   }
 }
 
+// ── Crash capture ─────────────────────────────────────────
+// Persist any uncaught exception to ~/.omniclaw/crashes/ with the last 50
+// structured log lines so a post-mortem can reconstruct what happened.
+try {
+  const eventLog = require('./observability/event-log');
+  process.on('uncaughtException', (err) => {
+    eventLog.captureUncaught(err);
+  });
+  process.on('unhandledRejection', (reason) => {
+    const err = reason instanceof Error ? reason : new Error(String(reason));
+    eventLog.captureUncaught(err);
+  });
+} catch (e) {
+  console.warn('[Main] event-log not available for crash capture:', e.message);
+}
+
 let mainWindow = null;
 
 function createWindow() {
@@ -130,9 +146,30 @@ function createWindow() {
   });
 }
 
+// ── Subsystem on/off switches (C-REL-5) ──────────────────
+// Each subsystem auto-starts unless the user has explicitly disabled it via
+// db.appState. Setting any of these keys to `false` (boolean) suppresses the
+// auto-start; setting to `true` or leaving unset enables auto-start.
+//
+// Keys: openviking_autostart, watchdog_autostart, discord_bot_enabled,
+//       autoresearch_crash_recovery, turso_sync_enabled
+function subsystemEnabled(key, defaultValue = true) {
+  try {
+    const db = require('./db/database');
+    const v = db.appState.get(key);
+    if (v === false) return false;
+    if (v === true) return true;
+    return defaultValue;
+  } catch (_) {
+    return defaultValue;
+  }
+}
+
 app.whenReady().then(async () => {
   registerSetupIPC();
-  registerIpcHandlers(ipcMain);
+  // Pass getMainWindow accessor so ipc-handlers doesn't need to require('./main').
+  // Avoids the circular require that previously worked only by execution-timing luck.
+  registerIpcHandlers(ipcMain, { getMainWindow: () => mainWindow });
   createWindow();
 
   // Run database maintenance (prune expired blackboard entries + old hook events)
@@ -165,8 +202,10 @@ app.whenReady().then(async () => {
     console.log('[Main] Provider registry init skipped:', err.message);
   }
 
-  // Auto-start OpenViking server in background
-  try {
+  // Auto-start OpenViking server in background (unless user disabled it)
+  if (!subsystemEnabled('openviking_autostart', true)) {
+    console.log('[Main] OpenViking auto-start disabled by user preference');
+  } else try {
     const ovServer = require('./openviking/ov-server');
     ovServer.startServer().then(healthy => {
       if (healthy) {
@@ -187,8 +226,10 @@ app.whenReady().then(async () => {
     console.log('[Main] OpenViking module not available:', err.message);
   }
 
-  // Auto-start Watchdog health monitor
-  try {
+  // Auto-start Watchdog health monitor (unless disabled)
+  if (!subsystemEnabled('watchdog_autostart', true)) {
+    console.log('[Main] Watchdog auto-start disabled by user preference');
+  } else try {
     const watchdog = require('./health/watchdog');
     const { registerWatchdogIPC } = require('./health/watchdog-ipc');
     const db = require('./db/database');
@@ -201,13 +242,13 @@ app.whenReady().then(async () => {
     console.log('[Main] Watchdog module not available:', err.message);
   }
 
-  // Auto-start Discord bot if token is available
+  // Auto-start Discord bot if token is available AND user has not explicitly disabled it.
+  // The previous version force-wrote discord_bot_enabled=true here, clobbering user intent.
   try {
     const db = require('./db/database');
     const discordToken = db.appState.get('discord_bot_token');
-    if (discordToken) {
-      // Auto-enable when token exists
-      db.appState.set('discord_bot_enabled', true);
+    const discordEnabled = db.appState.get('discord_bot_enabled');
+    if (discordToken && discordEnabled !== false) {
       const discordBot = require('./remote/discord-bot');
       discordBot.start(discordToken).then((result) => {
         if (result.success) {

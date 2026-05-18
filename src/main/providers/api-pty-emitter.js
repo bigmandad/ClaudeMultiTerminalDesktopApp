@@ -95,6 +95,9 @@ class ApiPtyEmitter {
 
         case 'tool_call':
           this.writeToolCall(chunk.name, chunk.args);
+          // Legacy single-round tool handler. When the caller uses the new
+          // runWithTools loop, onToolCall should be null and a `tool_result`
+          // chunk will arrive separately.
           if (onToolCall) {
             try {
               const result = await onToolCall(chunk.name, chunk.args);
@@ -103,6 +106,10 @@ class ApiPtyEmitter {
               this.writeError(`Tool ${chunk.name} failed: ${e.message}`);
             }
           }
+          break;
+
+        case 'tool_result':
+          this.writeToolResult(chunk.content);
           break;
 
         case 'error':

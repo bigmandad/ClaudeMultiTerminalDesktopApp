@@ -55,6 +55,23 @@ function init() {
   const schema = fs.readFileSync(schemaPath, 'utf-8');
   db.exec(schema);
 
+  // ── Idempotent column additions ─────────────────────────
+  // SQLite has no `ALTER TABLE ADD COLUMN IF NOT EXISTS`, so we probe the
+  // schema and add columns one-by-one when missing. Safe to re-run.
+  try {
+    const expColumns = new Set(
+      db.prepare('PRAGMA table_info(experiments)').all().map(r => r.name)
+    );
+    if (!expColumns.has('program_hash')) {
+      db.exec('ALTER TABLE experiments ADD COLUMN program_hash TEXT');
+    }
+    if (!expColumns.has('run_id')) {
+      db.exec('ALTER TABLE experiments ADD COLUMN run_id TEXT');
+    }
+  } catch (err) {
+    console.warn('[DB] column migration warning:', err.message);
+  }
+
   // Kick off Turso sync in the background (non-blocking).
   // This initialises the embedded replica and runs the first cloud sync.
   // Failures are logged but never prevent the app from starting.
@@ -322,8 +339,8 @@ const researchTargets = {
 const experiments = {
   record(exp) {
     const info = db.prepare(`
-      INSERT INTO experiments (target_id, session_id, commit_hash, metric_name, metric_value, status, description, diff_summary, duration_seconds)
-      VALUES (@targetId, @sessionId, @commitHash, @metricName, @metricValue, @status, @description, @diffSummary, @durationSeconds)
+      INSERT INTO experiments (target_id, session_id, commit_hash, metric_name, metric_value, status, description, diff_summary, duration_seconds, program_hash, run_id)
+      VALUES (@targetId, @sessionId, @commitHash, @metricName, @metricValue, @status, @description, @diffSummary, @durationSeconds, @programHash, @runId)
     `).run({
       targetId: exp.targetId,
       sessionId: exp.sessionId || null,
@@ -333,7 +350,9 @@ const experiments = {
       status: exp.status || 'discard',
       description: exp.description || '',
       diffSummary: exp.diffSummary || null,
-      durationSeconds: exp.durationSeconds ?? null
+      durationSeconds: exp.durationSeconds ?? null,
+      programHash: exp.programHash || null,
+      runId: exp.runId || null,
     });
 
     // Update target counters
@@ -545,4 +564,44 @@ function runMaintenance() {
   hookEvents.prune();
 }
 
-module.exports = { init, close, sync, runMaintenance, sessions, groups, usage, appState, recentPaths, researchTargets, experiments, blackboard, hookEvents, channelBindings };
+// Escape-hatch for ad-hoc SQL (watchdog probes, schema introspection).
+// High-level callers should prefer the namespaced helpers above; reach for raw
+// only when no namespace fits (e.g. PRAGMA integrity_check, PRAGMA wal_checkpoint).
+const raw = () => init();
+
+const peerReview = {
+  record(run) {
+    db.prepare(`
+      INSERT INTO peer_review_runs (
+        session_id, reviewer_id, reviewer_model, participant_ids,
+        response_count, avg_response_length, jaccard_overlap,
+        synthesis_length, cites_all_participants, quality_score
+      ) VALUES (
+        @sessionId, @reviewerId, @reviewerModel, @participantIds,
+        @responseCount, @avgResponseLength, @jaccardOverlap,
+        @synthesisLength, @citesAll, @qualityScore
+      )
+    `).run({
+      sessionId: run.sessionId || null,
+      reviewerId: run.reviewerId || null,
+      reviewerModel: run.reviewerModel || null,
+      participantIds: JSON.stringify(run.participantIds || []),
+      responseCount: run.responseCount ?? 0,
+      avgResponseLength: run.avgResponseLength ?? 0,
+      jaccardOverlap: run.jaccardOverlap ?? 0,
+      synthesisLength: run.synthesisLength ?? 0,
+      citesAll: run.citesAll ? 1 : 0,
+      qualityScore: run.qualityScore ?? 0,
+    });
+  },
+
+  recent(limit = 50) {
+    return db.prepare('SELECT * FROM peer_review_runs ORDER BY created_at DESC LIMIT ?').all(limit);
+  },
+
+  bySession(sessionId, limit = 20) {
+    return db.prepare('SELECT * FROM peer_review_runs WHERE session_id = ? ORDER BY created_at DESC LIMIT ?').all(sessionId, limit);
+  },
+};
+
+module.exports = { init, close, sync, runMaintenance, raw, sessions, groups, usage, appState, recentPaths, researchTargets, experiments, peerReview, blackboard, hookEvents, channelBindings };

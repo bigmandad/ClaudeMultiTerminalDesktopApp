@@ -130,6 +130,23 @@ class OllamaProvider extends ProviderInterface {
     }
   }
 
+  /**
+   * Feed a tool result back into the conversation. Ollama follows the
+   * OpenAI-compatible tool format, so the result is a `tool` role message.
+   * Called by the tool-execution loop (src/main/providers/tool-loop.js).
+   */
+  addToolResult(sessionId, toolCallId, result, toolName) {
+    const session = this._sessions.get(sessionId);
+    if (!session) return;
+    const content = typeof result === 'string' ? result : JSON.stringify(result);
+    session.messages.push({
+      role: 'tool',
+      tool_call_id: toolCallId || undefined,
+      name: toolName || undefined,
+      content,
+    });
+  }
+
   cancelGeneration(sessionId) {
     const session = this._sessions.get(sessionId);
     if (session?.abortController) session.abortController.abort();

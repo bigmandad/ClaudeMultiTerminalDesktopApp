@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="styles/forms.css">
   <link rel="stylesheet" href="styles/autoresearch.css">
   <link rel="stylesheet" href="styles/omnimode.css">
+  <link rel="stylesheet" href="styles/watchdog.css">
   <link rel="stylesheet" href="../../dist/xterm.css">
 </head>
 <body>
@@ -43,6 +44,12 @@
         </button>
         <button class="rail-btn" id="providers-rail-btn" data-panel="providers" title="AI Providers — Connect GPT, Gemini, Ollama">
           <span class="rail-icon">&#9881;</span>
+        </button>
+        <button class="rail-btn" id="watchdog-rail-btn" data-panel="watchdog" title="Watchdog — Health probes &amp; auto-recovery">
+          <span class="rail-icon">&#128737;</span>
+        </button>
+        <button class="rail-btn" id="logs-rail-btn" data-panel="logs" title="Logs — Structured event stream">
+          <span class="rail-icon">&#128221;</span>
         </button>
         <div class="rail-divider"></div>
         <button class="rail-btn layout-btn active" data-layout="single" title="Single Pane">
@@ -206,6 +213,32 @@
           <span>AI PROVIDERS</span>
         </div>
         <div id="providers-list" class="providers-list"></div>
+      </div>
+      <!-- Watchdog Panel -->
+      <div class="panel-content hidden" id="watchdog-panel">
+        <div class="panel-header">
+          <span>WATCHDOG</span>
+          <button class="panel-btn" id="watchdog-runnow-btn" title="Run all probes now">&#8635;</button>
+        </div>
+        <div id="watchdog-content" class="watchdog-content"></div>
+      </div>
+      <!-- Logs Panel -->
+      <div class="panel-content hidden" id="logs-panel">
+        <div class="panel-header">
+          <span>LOGS</span>
+          <button class="panel-btn" id="logs-refresh-btn" title="Reload tail">&#8635;</button>
+        </div>
+        <div class="logs-controls">
+          <select id="logs-level-filter">
+            <option value="">All levels</option>
+            <option value="error">Error</option>
+            <option value="warn">Warn</option>
+            <option value="info">Info</option>
+            <option value="debug">Debug</option>
+          </select>
+          <input id="logs-source-filter" type="text" placeholder="filter by source (e.g. watchdog, autoresearch)" />
+        </div>
+        <div id="logs-content" class="logs-content"></div>
       </div>
     </div>
 

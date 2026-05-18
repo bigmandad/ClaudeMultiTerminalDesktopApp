@@ -17,6 +17,17 @@ const MAX_FIX_ATTEMPTS = 3;
 const FIX_WINDOW_MS = 10 * 60 * 1000;  // 10 minutes
 const MAX_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 
+// Global back-pressure: cap destructive fixes (probes that mutate external
+// state — git commits, process kills, package installs) at 1 per 60s across
+// ALL probes. Prevents a restart storm if multiple probes flap simultaneously.
+const GLOBAL_DESTRUCTIVE_WINDOW_MS = 60 * 1000;
+let lastDestructiveFixAt = 0;
+function _isDestructiveProbe(probe) {
+  // Explicit opt-in flag wins; otherwise infer from name.
+  if (probe.destructiveFix === true) return true;
+  return ['git', 'plugins', 'openviking', 'ollama'].includes(probe.name);
+}
+
 // ── Lifecycle ─────────────────────────────────────────────
 
 function init(dependencies) {
@@ -38,11 +49,10 @@ function init(dependencies) {
     gitOps
   });
 
-  // Load git push consent from DB
-  if (deps.db && deps.db.get) {
+  // Load git push consent from DB (appState stores JSON-encoded values)
+  if (deps.db && deps.db.appState) {
     try {
-      const row = deps.db.get("SELECT value FROM app_state WHERE key = 'watchdog_git_push_consented'");
-      if (row && row.value === 'true') gitPushConsented = true;
+      gitPushConsented = deps.db.appState.get('watchdog_git_push_consented') === true;
     } catch {}
   }
 
@@ -129,9 +139,25 @@ async function attemptFix(probe, probeResult) {
     return;
   }
 
+  // Global destructive-fix back-pressure. If we already kicked off a fix
+  // that mutates external state in the last 60s, refuse this one — it can
+  // wait for the next probe interval. This prevents two flapping services
+  // from triggering simultaneous git commits / process kills / pip installs.
+  if (_isDestructiveProbe(probe) && (now - lastDestructiveFixAt) < GLOBAL_DESTRUCTIVE_WINDOW_MS) {
+    const wait = Math.ceil((GLOBAL_DESTRUCTIVE_WINDOW_MS - (now - lastDestructiveFixAt)) / 1000);
+    console.log(`[Watchdog] ${probe.name}: destructive-fix back-pressure (next eligible in ${wait}s)`);
+    return;
+  }
+
   // Attempt the fix
   console.log(`[Watchdog] ${probe.name}: attempting fix (attempt ${history.attempts + 1}/${MAX_FIX_ATTEMPTS})`);
   notify(`Fixing: ${probe.label}`, probeResult.message);
+
+  // Record destructive fix attempt timestamp BEFORE running so a long-running
+  // fix still blocks other destructive fixes for the full window.
+  if (_isDestructiveProbe(probe)) {
+    lastDestructiveFixAt = now;
+  }
 
   try {
     let fixResult;
@@ -165,21 +191,16 @@ async function attemptFix(probe, probeResult) {
 
 function consentGitPush() {
   gitPushConsented = true;
-  // Persist to DB
-  if (deps.db && deps.db.run) {
-    try {
-      deps.db.run("INSERT OR REPLACE INTO app_state (key, value) VALUES ('watchdog_git_push_consented', 'true')");
-    } catch {}
+  if (deps.db && deps.db.appState) {
+    try { deps.db.appState.set('watchdog_git_push_consented', true); } catch {}
   }
   console.log('[Watchdog] Git push consent granted');
 }
 
 function revokeGitPush() {
   gitPushConsented = false;
-  if (deps.db && deps.db.run) {
-    try {
-      deps.db.run("DELETE FROM app_state WHERE key = 'watchdog_git_push_consented'");
-    } catch {}
+  if (deps.db && deps.db.appState) {
+    try { deps.db.appState.set('watchdog_git_push_consented', false); } catch {}
   }
   console.log('[Watchdog] Git push consent revoked');
 }

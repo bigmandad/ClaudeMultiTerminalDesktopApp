@@ -91,7 +91,7 @@ function writeExperimentLog(targetId, experiment) {
  */
 function getStats(targetId) {
   const experiments = readTsv(targetId);
-  if (experiments.length === 0) return { total: 0, kept: 0, discarded: 0, crashed: 0, bestValue: null };
+  if (experiments.length === 0) return { total: 0, kept: 0, discarded: 0, crashed: 0, bestValue: null, learningRate: null };
 
   const kept = experiments.filter(e => e.status === 'keep');
   const discarded = experiments.filter(e => e.status === 'discard');
@@ -107,6 +107,57 @@ function getStats(targetId) {
     crashed: crashed.length,
     bestValue,
     lastExperiment: experiments[experiments.length - 1],
+    learningRate: computeLearningRate(targetId, 20),
+  };
+}
+
+/**
+ * Compute the rolling improvement rate over the last `window` experiments.
+ * Returns:
+ *   { newBestRate, keepRate, window, totalConsidered, isStagnant }
+ * where:
+ *   newBestRate — fraction of experiments that produced a new global best
+ *   keepRate    — fraction of experiments marked 'keep'
+ *   isStagnant  — newBestRate < 0.05 across a full window (signal to auto-stop)
+ *
+ * Returns null when fewer than `window` experiments exist (insufficient signal).
+ */
+function computeLearningRate(targetId, window = 20) {
+  const all = readTsv(targetId);
+  if (all.length < Math.min(window, 5)) return null;
+
+  // Rolling best across the entire history (not just the window) so we can
+  // tell which experiments inside the window broke a new best.
+  let runningBest = -Infinity;
+  let newBestCount = 0;
+  let keepCount = 0;
+
+  const considered = all.slice(-window);
+  // Pre-walk experiments BEFORE the window to establish runningBest baseline
+  for (const e of all.slice(0, -considered.length)) {
+    if (e.status === 'keep' && Number.isFinite(e.metricValue) && e.metricValue > runningBest) {
+      runningBest = e.metricValue;
+    }
+  }
+  for (const e of considered) {
+    const v = e.metricValue;
+    if (e.status === 'keep') {
+      keepCount++;
+      if (Number.isFinite(v) && v > runningBest) {
+        runningBest = v;
+        newBestCount++;
+      }
+    }
+  }
+
+  const newBestRate = newBestCount / considered.length;
+  const keepRate = keepCount / considered.length;
+  return {
+    newBestRate,
+    keepRate,
+    window: considered.length,
+    totalConsidered: considered.length,
+    isStagnant: considered.length >= window && newBestRate < 0.05,
   };
 }
 
@@ -121,4 +172,4 @@ function getTsvPath(targetId) {
   return path.join(getTargetDir(targetId), 'results.tsv');
 }
 
-module.exports = { initTarget, appendTsv, readTsv, writeExperimentLog, getStats };
+module.exports = { initTarget, appendTsv, readTsv, writeExperimentLog, getStats, computeLearningRate };

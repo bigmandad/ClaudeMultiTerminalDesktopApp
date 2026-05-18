@@ -50,12 +50,16 @@ class McpManager {
       proc.on('error', (err) => {
         console.error(`[MCP:${name}] process error:`, err.message);
         server.status = 'error';
+        this._rejectPending(server, new Error(`MCP server ${name} errored: ${err.message}`));
         this._notifyStatus(name, server);
       });
 
       proc.on('exit', (code) => {
         console.log(`[MCP:${name}] exited with code ${code}`);
         server.status = 'stopped';
+        // Without this, in-flight tool calls would hang until their 30s timeout
+        // even though the server is gone — leaving the orchestrator stuck.
+        this._rejectPending(server, new Error(`MCP server ${name} exited (code ${code})`));
         this._notifyStatus(name, server);
       });
 
@@ -160,6 +164,20 @@ class McpManager {
         id: Date.now(),
         method: 'tools/list'
       });
+    }
+  }
+
+  /**
+   * Reject every in-flight tool call on a server. Called when the server
+   * crashes or exits so callers fail fast instead of timing out.
+   */
+  _rejectPending(server, err) {
+    if (!server || !server._pendingCalls) return;
+    for (const id of Object.keys(server._pendingCalls)) {
+      const pending = server._pendingCalls[id];
+      try { clearTimeout(pending.timeout); } catch (_) {}
+      try { pending.reject(err); } catch (_) {}
+      delete server._pendingCalls[id];
     }
   }
 

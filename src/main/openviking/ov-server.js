@@ -90,6 +90,49 @@ let isStarting = false;
 let isHealthy = false;
 
 /**
+ * Find the PID holding a given TCP port. Cross-platform.
+ * Returns null if no process holds the port.
+ */
+function getPidByPort(port) {
+  try {
+    if (process.platform === 'win32') {
+      const out = execSync(`netstat -ano | findstr ":${port}" | findstr "LISTENING"`, {
+        encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore']
+      });
+      // Lines look like:  TCP    127.0.0.1:1933   0.0.0.0:0   LISTENING   30472
+      for (const line of out.split(/\r?\n/)) {
+        const m = line.trim().match(/LISTENING\s+(\d+)$/);
+        if (m) return parseInt(m[1], 10);
+      }
+    } else {
+      const out = execSync(`lsof -i:${port} -t`, {
+        encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore']
+      }).trim();
+      if (out) return parseInt(out.split(/\s+/)[0], 10);
+    }
+  } catch (_) { /* not bound, or tool missing */ }
+  return null;
+}
+
+/**
+ * Kill a process and its descendants. Cross-platform.
+ */
+function killPidTree(pid) {
+  try {
+    if (process.platform === 'win32') {
+      execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', timeout: 5000 });
+    } else {
+      // SIGKILL the process group first, then the pid itself as fallback
+      try { process.kill(-pid, 'SIGKILL'); } catch (_) {}
+      try { process.kill(pid, 'SIGKILL'); } catch (_) {}
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
  * Start the OpenViking HTTP server as a background child process.
  * Returns a promise that resolves when the server is healthy.
  */
@@ -108,13 +151,37 @@ async function startServer() {
   console.log('[OpenViking] Starting server on port', OV_PORT);
 
   try {
-    // First check if something is already running on the port
+    // First check if something is already running and healthy on the port
     const alreadyRunning = await checkHealth();
     if (alreadyRunning) {
       console.log('[OpenViking] Server already running externally');
       isHealthy = true;
       isStarting = false;
       return true;
+    }
+
+    // Zombie detection: a process may be holding :1933 but unresponsive.
+    // Without this check, the subsequent spawn would fail to bind and the
+    // server would stay dead silently (the exact 2-day-hang bug we hit).
+    const stalePid = getPidByPort(OV_PORT);
+    if (stalePid) {
+      console.warn(`[OpenViking] Port ${OV_PORT} held by unhealthy PID ${stalePid} — killing zombie`);
+      const killed = killPidTree(stalePid);
+      if (!killed) {
+        console.error('[OpenViking] Could not kill zombie process; aborting start');
+        isStarting = false;
+        return false;
+      }
+      // Brief pause to let the OS release the port
+      await new Promise(r => setTimeout(r, 1500));
+      // Verify port is actually free now
+      const stillBound = getPidByPort(OV_PORT);
+      if (stillBound) {
+        console.error(`[OpenViking] Port still bound by PID ${stillBound} after kill; aborting start`);
+        isStarting = false;
+        return false;
+      }
+      console.log('[OpenViking] Zombie cleared, port freed');
     }
 
     // Ensure Ollama is running (needed for embeddings)

@@ -11,7 +11,8 @@
     "build:mac": "node build.js && electron-builder --mac",
     "build:all": "node build.js && electron-builder --win --mac",
     "dev": "node build.js && electron . --dev",
-    "setup-turso": "node scripts/setup-turso.js"
+    "setup-turso": "node scripts/setup-turso.js",
+    "test": "node --test test/smoke.js"
   },
   "dependencies": {
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",

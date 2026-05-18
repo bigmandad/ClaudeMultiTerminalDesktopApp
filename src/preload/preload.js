@@ -347,6 +347,23 @@ contextBridge.exposeInMainWorld('api', {
     }
   },
 
+  // ── Event Log (structured observability) ────────────────
+  log: {
+    tail: (opts) => ipcRenderer.invoke('log:tail', opts),
+    listFiles: () => ipcRenderer.invoke('log:listFiles'),
+    readFile: (name, opts) => ipcRenderer.invoke('log:readFile', name, opts),
+    onEvent: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('log:event', handler);
+      return () => ipcRenderer.removeListener('log:event', handler);
+    }
+  },
+
+  // ── Metrics (in-memory ring buffer) ─────────────────────
+  metrics: {
+    snapshot: () => ipcRenderer.invoke('metrics:snapshot'),
+  },
+
   // ── Hook Events (Claude Code lifecycle) ──────────────────
   hooks: {
     recent: (limit) => ipcRenderer.invoke('hooks:recent', limit),

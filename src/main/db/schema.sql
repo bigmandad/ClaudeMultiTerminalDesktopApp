@@ -87,6 +87,8 @@ CREATE TABLE IF NOT EXISTS experiments (
   description TEXT,
   diff_summary TEXT,
   duration_seconds REAL,
+  program_hash TEXT,         -- SHA-256 prefix of the program.md used for this experiment
+  run_id TEXT,               -- ISO timestamp identifying the per-run program.md directory
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (target_id) REFERENCES research_targets(id)
 );
@@ -224,3 +226,24 @@ CREATE TABLE IF NOT EXISTS provider_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_provider_sessions_session ON provider_sessions(session_id);
+
+-- ── Peer-review quality scoring ────────────────────────
+-- Each row captures a single synthesis run: which providers participated,
+-- whether they agreed, and whether the reviewer's synthesis cited everyone.
+CREATE TABLE IF NOT EXISTS peer_review_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT,
+  reviewer_id TEXT,
+  reviewer_model TEXT,
+  participant_ids TEXT,            -- JSON array of provider IDs that responded
+  response_count INTEGER,
+  avg_response_length REAL,
+  jaccard_overlap REAL,            -- Mean pairwise Jaccard of significant terms
+  synthesis_length INTEGER,
+  cites_all_participants INTEGER,  -- 0/1
+  quality_score REAL,              -- Composite 0..1
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_peer_review_session ON peer_review_runs(session_id);
+CREATE INDEX IF NOT EXISTS idx_peer_review_score ON peer_review_runs(quality_score);

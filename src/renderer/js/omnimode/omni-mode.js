@@ -210,6 +210,7 @@ function _showResultsOverlay(subSessions, prompt) {
     <div class="omni-results-header">
       <span class="omni-results-title">⚡ OmniMode Results</span>
       <span class="omni-results-prompt">${truncPrompt}</span>
+      <button class="omni-results-cancel" id="omni-cancel-btn" title="Cancel running providers">⊘ Cancel</button>
       <button class="omni-results-close" id="omni-close-btn">✕</button>
     </div>
     <div class="omni-results-grid" id="omni-results-grid">
@@ -243,6 +244,34 @@ function _showResultsOverlay(subSessions, prompt) {
       _activeSession = null;
     }
   });
+
+  // Cancel button — interrupts mid-fan-out so a slow provider can't hold the loop
+  const cancelBtn = document.getElementById('omni-cancel-btn');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', async () => {
+      if (!_activeSession) return;
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = '⊘ Cancelling…';
+      try {
+        await window.api.multiLlm.cancel(_activeSession);
+        showToast('OmniMode cancelled', 'info');
+        // Mark all in-flight cards as cancelled
+        if (_overlayEl) {
+          _overlayEl.querySelectorAll('.omni-result-status').forEach(el => {
+            if (el.textContent.includes('Running')) {
+              el.textContent = '⊘ Cancelled';
+              el.style.color = '#b8a07a';
+            }
+          });
+        }
+      } catch (e) {
+        showToast(`Cancel failed: ${e.message}`, 'error');
+      } finally {
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = '⊘ Cancel';
+      }
+    });
+  }
 }
 
 function _updateResults(results) {

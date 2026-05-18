@@ -133,6 +133,25 @@ class GeminiProvider extends ProviderInterface {
     }
   }
 
+  /**
+   * Feed a tool result back into the conversation. Gemini wants a `function`
+   * role message with a `functionResponse` part referencing the tool name.
+   * Called by the tool-execution loop (src/main/providers/tool-loop.js).
+   */
+  addToolResult(sessionId, _toolCallId, result, toolName) {
+    const session = this._sessions.get(sessionId);
+    if (!session) return;
+    session.history.push({
+      role: 'function',
+      parts: [{
+        functionResponse: {
+          name: toolName,
+          response: typeof result === 'string' ? { result } : (result || {}),
+        }
+      }]
+    });
+  }
+
   cancelGeneration(sessionId) {
     const session = this._sessions.get(sessionId);
     if (session?.abortController) session.abortController.abort();

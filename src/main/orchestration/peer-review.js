@@ -3,6 +3,86 @@
 const { providerRegistry } = require('../providers/provider-registry');
 const { ApiPtyEmitter } = require('../providers/api-pty-emitter');
 
+// ── Quality scoring helpers ─────────────────────────────
+// Cheap, no-dependency signals about whether the synthesis is good.
+// Used to populate the peer_review_runs table and inform whether the
+// self-improvement loop should trust a given synthesis.
+
+const STOPWORDS = new Set([
+  'the','a','an','and','or','but','if','then','of','to','in','on','at',
+  'is','are','was','were','be','been','being','for','as','with','by',
+  'this','that','these','those','it','its','from','will','would','can',
+  'could','should','may','might','do','does','did','have','has','had',
+]);
+
+function _significantTerms(text) {
+  if (!text) return new Set();
+  return new Set(
+    String(text).toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 4 && !STOPWORDS.has(w))
+  );
+}
+
+function _jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter++;
+  return inter / (a.size + b.size - inter);
+}
+
+/**
+ * Score a synthesis run on a 0..1 composite.
+ *   - 40%: providers agreed (avg pairwise Jaccard of their responses)
+ *   - 30%: synthesis cites every participant
+ *   - 30%: synthesis is reasonably long (>200 chars) — short syntheses
+ *           tend to be evasive/under-thought
+ */
+function scoreSynthesis(responses, synthesis) {
+  const valid = responses.filter(r =>
+    (r.status === 'complete' || r.status === 'fulfilled') && (r.response || '').length > 0
+  );
+  if (valid.length === 0) {
+    return {
+      responseCount: 0, avgResponseLength: 0, jaccardOverlap: 0,
+      synthesisLength: (synthesis || '').length, citesAll: false, qualityScore: 0,
+      participantIds: [],
+    };
+  }
+
+  const termSets = valid.map(r => _significantTerms(r.response));
+  let pairCount = 0;
+  let jaccardSum = 0;
+  for (let i = 0; i < termSets.length; i++) {
+    for (let j = i + 1; j < termSets.length; j++) {
+      jaccardSum += _jaccard(termSets[i], termSets[j]);
+      pairCount++;
+    }
+  }
+  const jaccardOverlap = pairCount > 0 ? jaccardSum / pairCount : 1; // single-provider case → no disagreement
+
+  const synthLower = String(synthesis || '').toLowerCase();
+  const citesCount = valid.filter(r => synthLower.includes(r.providerId.toLowerCase())).length;
+  const citesAll = citesCount === valid.length;
+
+  const avgLen = valid.reduce((s, r) => s + (r.response || '').length, 0) / valid.length;
+  const synthLen = synthLower.length;
+
+  const lengthScore = Math.min(1, synthLen / 200);
+  const score = 0.4 * jaccardOverlap + 0.3 * (citesAll ? 1 : citesCount / valid.length) + 0.3 * lengthScore;
+
+  return {
+    responseCount: valid.length,
+    avgResponseLength: avgLen,
+    jaccardOverlap,
+    synthesisLength: synthLen,
+    citesAll,
+    qualityScore: score,
+    participantIds: valid.map(r => r.providerId),
+  };
+}
+
 class PeerReview {
   /**
    * Synthesize multiple LLM responses into a comparative analysis.
@@ -58,21 +138,53 @@ class PeerReview {
       systemPrompt: 'You are an expert analyst synthesizing responses from multiple AI models. Be concise, insightful, and highlight key differences and agreements.',
     });
 
-    // Stream the synthesis
-    if (opts.webContents) {
-      const emitter = new ApiPtyEmitter(opts.webContents, synthesisSessionId, actualReviewerId);
-      const generator = actualReviewer.sendMessage(synthesisSessionId, synthesisPrompt);
-      await emitter.streamResponse(generator, `Synthesis (${actualReviewer.displayName})`);
-    }
+    // Stream + collect in a single pass.
+    // Previously this code called sendMessage twice — once via streamResponse and
+    // once to "collect text". The second call ran on a session whose history
+    // already contained the synthesis exchange, so it produced a follow-up rather
+    // than a fresh synthesis (double-billed tokens, mismatched UI vs return value).
+    const emitter = opts.webContents
+      ? new ApiPtyEmitter(opts.webContents, synthesisSessionId, actualReviewerId)
+      : null;
 
-    // Collect the full response
+    if (emitter) emitter.writeHeader(`Synthesis (${actualReviewer.displayName})`);
+
     let fullSynthesis = '';
     const generator = actualReviewer.sendMessage(synthesisSessionId, synthesisPrompt);
     for await (const chunk of generator) {
-      if (chunk.type === 'text') fullSynthesis += chunk.content;
+      switch (chunk.type) {
+        case 'text':
+          fullSynthesis += chunk.content;
+          if (emitter) emitter.writeChunk(chunk.content);
+          break;
+        case 'error':
+          if (emitter) emitter.writeError(chunk.content);
+          break;
+        case 'cancelled':
+          if (emitter) emitter.writeStatus('Synthesis cancelled');
+          break;
+      }
     }
 
+    if (emitter) emitter.writeDone();
+
     actualReviewer.destroy(synthesisSessionId);
+
+    // Persist a quality record so the AutoResearch loop has a signal about
+    // whether peer review is producing useful syntheses or junk.
+    try {
+      const db = require('../db/database');
+      const quality = scoreSynthesis(responses, fullSynthesis);
+      db.peerReview.record({
+        sessionId: opts.sessionId || null,
+        reviewerId: actualReviewerId,
+        reviewerModel: model,
+        ...quality,
+      });
+    } catch (e) {
+      console.warn('[PeerReview] quality scoring failed:', e.message);
+    }
+
     return fullSynthesis;
   }
 

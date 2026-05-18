@@ -117,15 +117,31 @@ class OpenAIProvider extends ProviderInterface {
       }
 
       // Process any tool calls
+      const parsedToolCalls = [];
       for (const tc of toolCalls) {
         if (!tc || !tc.name) continue;
         let args = {};
         try { args = JSON.parse(tc.args); } catch (e) { /* ignore */ }
+        parsedToolCalls.push({ id: tc.id, name: tc.name, args, rawArgs: tc.args });
         yield { type: 'tool_call', id: tc.id, name: tc.name, args };
       }
 
-      // Store assistant message
-      if (fullContent) {
+      // Store assistant message. Critical: if there were tool calls, the
+      // assistant message must include them so a subsequent `tool` role
+      // message has a corresponding `tool_call_id` to reference. Otherwise
+      // OpenAI rejects the next request with "tool message must follow a
+      // tool_calls assistant message".
+      if (parsedToolCalls.length > 0) {
+        session.messages.push({
+          role: 'assistant',
+          content: fullContent || null,
+          tool_calls: parsedToolCalls.map(t => ({
+            id: t.id,
+            type: 'function',
+            function: { name: t.name, arguments: t.rawArgs || '{}' },
+          })),
+        });
+      } else if (fullContent) {
         session.messages.push({ role: 'assistant', content: fullContent });
       }
 

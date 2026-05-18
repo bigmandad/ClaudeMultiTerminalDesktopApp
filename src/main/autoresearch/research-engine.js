@@ -3,11 +3,16 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const targetAnalyzer = require('./target-analyzer');
 const experimentTracker = require('./experiment-tracker');
 const programTemplates = require('./program-templates');
 
 const RESEARCH_DIR = path.join(os.homedir(), '.omniclaw', 'autoresearch');
+
+function _programHash(content) {
+  return crypto.createHash('sha256').update(content || '').digest('hex').slice(0, 12);
+}
 
 // ── Safety limits & diminishing returns defaults ─────────
 const DEFAULTS = {
@@ -89,6 +94,25 @@ async function startResearch(config) {
   const programPath = path.join(programDir, 'program.md');
   fs.writeFileSync(programPath, programMd);
 
+  // Per-run snapshot for reproducibility. Without this, every research start
+  // overwrites program.md and prior experiments become non-comparable because
+  // the input that produced them is gone. This snapshot is the source of truth
+  // for which template version produced a given metric value.
+  const runId = new Date().toISOString().replace(/[:.]/g, '-');
+  const programHash = _programHash(programMd);
+  const runDir = path.join(programDir, 'runs', runId);
+  try {
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(runDir, 'program.md'), programMd);
+    fs.writeFileSync(path.join(runDir, 'meta.json'), JSON.stringify({
+      runId, programHash, startedAt: new Date().toISOString(), profile: {
+        id: profile.id, type: profile.type, name: profile.name,
+      },
+    }, null, 2));
+  } catch (snapErr) {
+    console.warn(`[ResearchEngine] Per-run snapshot failed for ${targetId}:`, snapErr.message);
+  }
+
   // Initialize experiment tracking
   experimentTracker.initTarget(targetId);
 
@@ -121,6 +145,8 @@ async function startResearch(config) {
     targetId,
     profile,
     programPath,
+    programHash,
+    runId,
     status: 'starting',
     experimentCount: 0,
     lastMetricValue: null,
@@ -273,6 +299,8 @@ function processOutput(sessionId, data) {
       status: statusMatch[1],
       description: descMatch?.[1]?.trim() || '',
       durationSeconds: durationMatch ? parseInt(durationMatch[1]) : null,
+      programHash: research.programHash || null,
+      runId: research.runId || null,
     };
 
     // Log to TSV
@@ -398,6 +426,19 @@ function checkSafetyLimits(targetId, research) {
     }
   }
 
+  // 5. Learning-rate floor: stop when newBest-rate drops below 5% across a
+  // full 20-experiment window. Cheaper to stop than to keep burning budget
+  // on a research direction that has hit a plateau.
+  try {
+    const lr = experimentTracker.computeLearningRate(targetId, 20);
+    if (lr && lr.isStagnant) {
+      return {
+        shouldStop: true,
+        reason: `learning-rate floor (${(lr.newBestRate * 100).toFixed(1)}% new-best over last ${lr.window} experiments)`
+      };
+    }
+  } catch (_) { /* tracker unavailable, skip */ }
+
   return null;
 }
 
@@ -462,6 +503,32 @@ function emitStatus(targetId, state) {
   }
 }
 
+/**
+ * Recover from an unclean shutdown. The in-memory `activeResearch` Map is
+ * volatile — if the app crashed or was hard-killed mid-experiment, the DB row
+ * still shows `status='running'` (or 'starting'/'active') but no loop is alive.
+ * Without this scan, the UI would forever display "running" for orphaned targets.
+ *
+ * Call this once on app start, after db.init().
+ */
+function recoverFromCrash() {
+  if (!dbRef) return { recovered: 0 };
+  try {
+    const targets = dbRef.researchTargets.list();
+    const stale = targets.filter(t =>
+      t.status === 'running' || t.status === 'starting' || t.status === 'active'
+    );
+    for (const t of stale) {
+      console.warn(`[ResearchEngine] Marking orphaned target ${t.id} as crashed (was ${t.status})`);
+      try { dbRef.researchTargets.update(t.id, { status: 'crashed' }); } catch (_) {}
+    }
+    return { recovered: stale.length };
+  } catch (err) {
+    console.error('[ResearchEngine] Crash recovery scan failed:', err.message);
+    return { recovered: 0, error: err.message };
+  }
+}
+
 module.exports = {
   init,
   onExperiment,
@@ -470,6 +537,7 @@ module.exports = {
   stopResearch,
   pauseResearch,
   autoStopResearch,
+  recoverFromCrash,
   getStatus,
   getAllStatus,
   processOutput,

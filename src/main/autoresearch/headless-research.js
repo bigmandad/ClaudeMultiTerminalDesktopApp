@@ -40,6 +40,13 @@ async function runHeadlessResearch(config) {
     maxExperiments = 20,
     maxTurnsPerExperiment = 50,
     maxConsecutiveDiscards = 5,
+    // Wall-clock cap — previously absent from headless, so a 20-iteration loop
+    // could legitimately run >3h with no hard stop. Mirrors PTY mode's default.
+    timeoutMinutes = 180,
+    // Stagnation detection — also previously absent from headless, creating an
+    // asymmetric safety story between PTY and headless paths.
+    stagnationWindow = 8,
+    stagnationThreshold = 0.001,
     onExperiment,
     onStatus,
     onEvent,
@@ -86,6 +93,33 @@ async function runHeadlessResearch(config) {
       if (state.aborted) {
         state.status = 'stopped';
         break;
+      }
+
+      // Wall-clock timeout — bound total runtime even if individual iterations
+      // are still producing results.
+      const elapsedMin = (Date.now() - new Date(state.startedAt).getTime()) / 60000;
+      if (elapsedMin >= timeoutMinutes) {
+        state.status = 'auto-stopped';
+        state.stopReason = `wall-clock timeout (${timeoutMinutes}min)`;
+        break;
+      }
+
+      // Stagnation detection — same logic as PTY-mode checkSafetyLimits.
+      const recentValues = state.experiments
+        .slice(-stagnationWindow)
+        .map(e => e.metricValue)
+        .filter(v => typeof v === 'number' && !isNaN(v));
+      if (recentValues.length >= stagnationWindow) {
+        const half = Math.floor(recentValues.length / 2);
+        const firstHalf = recentValues.slice(0, half);
+        const secondHalf = recentValues.slice(half);
+        const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+        const delta = avg(secondHalf) - avg(firstHalf);
+        if (Math.abs(delta) < stagnationThreshold) {
+          state.status = 'auto-stopped';
+          state.stopReason = `stagnation (Δ=${delta.toFixed(4)} over last ${stagnationWindow} experiments)`;
+          break;
+        }
       }
 
       // Build iteration prompt with accumulated context

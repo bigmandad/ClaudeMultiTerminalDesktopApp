@@ -137,11 +137,50 @@ async function ingestTranscripts(sessionId = null) {
   return results;
 }
 
+// In-memory cache of last-ingested transcript hashes per session.
+// Persisted to db.appState under key 'ov_transcript_hashes' so the dedupe
+// survives across app restarts. Without this, every session resume causes
+// a full re-ingest of an unchanged transcript and wastes embedding quota.
+const HASH_KEY = 'ov_transcript_hashes';
+let _hashCache = null;
+
+function _loadHashes() {
+  if (_hashCache) return _hashCache;
+  try {
+    const db = require('../db/database');
+    _hashCache = db.appState.get(HASH_KEY) || {};
+  } catch (_) {
+    _hashCache = {};
+  }
+  return _hashCache;
+}
+
+function _saveHashes() {
+  if (!_hashCache) return;
+  try {
+    const db = require('../db/database');
+    db.appState.set(HASH_KEY, _hashCache);
+  } catch (_) { /* non-fatal */ }
+}
+
+function _hashContent(content) {
+  const crypto = require('crypto');
+  return crypto.createHash('sha256').update(content || '').digest('hex').slice(0, 16);
+}
+
 /**
  * Ingest a single session transcript (called when a session ends).
+ * Skips ingestion when the transcript hasn't changed since the last ingest
+ * for this session — see HASH_KEY comment above.
  */
 async function ingestSingleTranscript(sessionId, transcriptContent, meta = {}) {
   try {
+    const hashes = _loadHashes();
+    const currentHash = _hashContent(transcriptContent);
+    if (hashes[sessionId] === currentHash) {
+      return { success: true, skipped: true, reason: 'transcript unchanged since last ingest' };
+    }
+
     // Write to temp file and ingest
     const tmpDir = path.join(os.tmpdir(), 'openviking-ingest');
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
@@ -164,6 +203,11 @@ async function ingestSingleTranscript(sessionId, transcriptContent, meta = {}) {
       reason: `Session transcript: ${meta.name || sessionId}`,
       tags: ['transcript', 'session', sessionId]
     });
+
+    // Persist the hash only after a successful ingest so we don't dedupe
+    // away a transcript that failed mid-flight.
+    hashes[sessionId] = currentHash;
+    _saveHashes();
 
     // Also try to extract memories
     try {

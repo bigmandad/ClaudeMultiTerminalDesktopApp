@@ -121,10 +121,13 @@ async function ingestSnippet(sessionId, snippet, category, meta) {
   fs.writeFileSync(tmpFile, content);
 
   try {
+    // Micro-ingest is fire-and-forget; fail fast (5s) when OV is hung so the
+    // PTY data path is never blocked by a stuck embedding call.
     await ovClient.addResource(tmpFile, {
       scope: 'resources',
       reason: `Real-time capture (${category}) from session ${meta.name || sessionId}`,
       tags: ['micro-ingest', category, sessionId],
+      timeout: 5000,
     });
     console.log(`[MicroIngest] Ingested ${category} snippet for ${sessionId}`);
   } finally {

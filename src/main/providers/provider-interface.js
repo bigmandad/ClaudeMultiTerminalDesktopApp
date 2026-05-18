@@ -55,6 +55,19 @@ class ProviderInterface {
   async *sendMessage(sessionId, message, tools = []) { throw new Error('Not implemented'); }
 
   /**
+   * Feed a tool result back into the session so generation can continue.
+   * Used by src/main/providers/tool-loop.js to do multi-round tool execution.
+   *
+   * @param {string} sessionId
+   * @param {string|null} toolCallId - Provider-specific call ID (or null)
+   * @param {*}      result          - Whatever the tool returned
+   * @param {string} [toolName]      - Tool name (some providers want this)
+   */
+  addToolResult(sessionId, toolCallId, result, toolName) {
+    // Default: no-op. Providers that support tool use should override.
+  }
+
+  /**
    * Cancel an in-flight generation.
    * @param {string} sessionId
    */

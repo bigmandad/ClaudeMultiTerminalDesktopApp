@@ -148,6 +148,20 @@
 }
 .omni-results-close:hover { background: rgba(255,255,255,0.1); }
 
+.omni-results-cancel {
+  background: rgba(184, 122, 122, 0.1);
+  border: 1px solid rgba(184, 122, 122, 0.4);
+  color: #b87a7a;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.omni-results-cancel:hover { background: rgba(184, 122, 122, 0.2); }
+.omni-results-cancel:disabled { opacity: 0.5; cursor: default; }
+
 .omni-results-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));

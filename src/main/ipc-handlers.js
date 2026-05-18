@@ -17,28 +17,44 @@ const transcriber = new Transcriber();
 const mcpManager = new McpManager();
 const notifier = new Notifier();
 
-function registerIpcHandlers(ipcMain) {
-  const { getMainWindow } = require('./main');
+function registerIpcHandlers(ipcMain, dependencies = {}) {
+  // Accept getMainWindow via dependency injection so we don't have to
+  // require('./main') here — that created a circular require that only
+  // worked by accident of module-load timing. Falls back to the late require
+  // for backward compatibility with any caller that doesn't pass it yet.
+  const getMainWindow = dependencies.getMainWindow || (() => {
+    try { return require('./main').getMainWindow(); } catch { return null; }
+  });
 
   // Initialize database
   db.init();
+
+  // Wire up the structured event log handlers + push subscription
+  _registerLogHandlers(ipcMain);
 
   // ── PTY Handlers ──────────────────────────────────────────
 
   ipcMain.handle('pty:spawn', async (event, opts) => {
     console.log('[Main:pty:spawn] id=' + opts.id, 'cwd=' + (opts.cwd || 'default'), 'launchClaude=' + (opts.launchClaude !== false));
 
-    // OV Context Seeding — query OpenViking for workspace-relevant knowledge
+    // OV Context Seeding — query OpenViking for workspace-relevant knowledge.
+    // Capped at 2s via Promise.race so a hung OV server can't stall session spawn.
+    // The catch below swallows the timeout gracefully.
     let ovContext = '';
     if (opts.launchClaude !== false && !opts.resume) {
       try {
         const ovClientLocal = require('./openviking/ov-client');
         const workspaceDir = opts.cwd || os.homedir();
         const workspaceName = path.basename(workspaceDir);
-        const results = await ovClientLocal.search(
-          `${workspaceName} project context patterns`,
-          { topK: 5, tier: 'L0' }
-        );
+        const results = await Promise.race([
+          ovClientLocal.search(
+            `${workspaceName} project context patterns`,
+            { topK: 5, tier: 'L0' }
+          ),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('OV context seed timeout (>2s)')), 2000)
+          )
+        ]);
         const resources = results?.resources || [];
         const memories = results?.memories || [];
         const snippets = [];
@@ -629,10 +645,35 @@ function registerIpcHandlers(ipcMain) {
     };
 
     try {
-      // git pull from origin
+      // Pre-flight: refuse to pull if the working tree is dirty. The auto-commit
+      // watchdog *should* keep things clean, but never trust — a half-completed
+      // user edit + a rebase pull will produce conflicts that brick the app.
+      let porcelain = '';
+      try { porcelain = run('git status --porcelain', { timeout: 10000 }); } catch (_) { /* treat as clean */ }
+      if (porcelain && porcelain.length > 0) {
+        return {
+          updated: false,
+          message: 'Uncommitted local changes — commit or stash them first, then retry.',
+          dirty: porcelain.split('\n').slice(0, 20).join('\n')
+        };
+      }
+
       // Set rebase as default pull strategy, then pull
       try { run('git config pull.rebase true'); } catch (_) { /* already set */ }
-      const pullResult = run('git pull origin main', { timeout: 30000 });
+
+      let pullResult;
+      try {
+        pullResult = run('git pull origin main', { timeout: 30000 });
+      } catch (pullErr) {
+        // Rebase may have failed mid-flight (conflict). Rescue: abort so the
+        // working tree is left in a known-good state and the user can retry.
+        const pullMsg = String(pullErr.message || '');
+        try { run('git rebase --abort', { timeout: 10000 }); } catch (_) { /* nothing to abort */ }
+        return {
+          updated: false,
+          message: `Pull failed and rebase aborted: ${pullMsg.slice(0, 200)}. Working tree restored.`
+        };
+      }
 
       if (pullResult.includes('Already up to date')) {
         return { updated: false, message: 'Already up to date' };
@@ -700,7 +741,10 @@ function registerIpcHandlers(ipcMain) {
     try {
       const { providerRegistry } = require('./providers/provider-registry');
       return providerRegistry.listProviders();
-    } catch (e) { return []; }
+    } catch (e) {
+      console.error('[provider:list] failed:', e.message);
+      return [];
+    }
   });
 
   ipcMain.handle('provider:models', async (event, providerId) => {
@@ -709,14 +753,20 @@ function registerIpcHandlers(ipcMain) {
       const provider = providerRegistry.getProvider(providerId);
       if (!provider) return [];
       return await provider.models();
-    } catch (e) { return []; }
+    } catch (e) {
+      console.error(`[provider:models] ${providerId} failed:`, e.message);
+      return [];
+    }
   });
 
   ipcMain.handle('provider:allModels', async () => {
     try {
       const { providerRegistry } = require('./providers/provider-registry');
       return await providerRegistry.listAllModels();
-    } catch (e) { return []; }
+    } catch (e) {
+      console.error('[provider:allModels] failed:', e.message);
+      return [];
+    }
   });
 
   ipcMain.handle('provider:send', async (event, { sessionId, providerId, message, model }) => {
@@ -724,19 +774,19 @@ function registerIpcHandlers(ipcMain) {
       const { providerRegistry } = require('./providers/provider-registry');
       const { ApiPtyEmitter } = require('./providers/api-pty-emitter');
       const { McpBridge } = require('./mcp/mcp-bridge');
+      const { runWithTools } = require('./providers/tool-loop');
       const provider = providerRegistry.getProvider(providerId);
       if (!provider) throw new Error(`Unknown provider: ${providerId}`);
 
       // Create session if not exists
       await provider.createSession(sessionId, { model });
 
-      // Get MCP tools in provider-native format
+      // Get MCP tools in provider-native format.
       let tools = [];
       let toolHandler = null;
       try {
-        const mcpManager = require('./mcp/mcp-manager');
-        if (mcpManager.instance) {
-          const bridge = new McpBridge(mcpManager.instance);
+        if (mcpManager) {
+          const bridge = new McpBridge(mcpManager);
           tools = bridge.getToolsForProvider(providerId === 'gemini' ? 'gemini' : 'openai');
           toolHandler = bridge.createToolHandler();
         }
@@ -748,9 +798,15 @@ function registerIpcHandlers(ipcMain) {
       const emitter = new ApiPtyEmitter(event.sender, sessionId, providerId);
       const modelName = model || providerId;
 
-      // Stream the response with tool execution support
-      const generator = provider.sendMessage(sessionId, message, tools);
-      await emitter.streamResponse(generator, modelName, toolHandler);
+      // Use the multi-round tool-execution loop when tools are present so
+      // tool results round-trip back into the conversation instead of
+      // dropping on the floor. Pass null toolHandler to the emitter — the
+      // loop handles execution itself.
+      const generator = (tools.length > 0 && toolHandler)
+        ? runWithTools(provider, sessionId, message, tools, toolHandler)
+        : provider.sendMessage(sessionId, message, tools);
+
+      await emitter.streamResponse(generator, modelName, null);
 
       return { success: true };
     } catch (e) {
@@ -777,12 +833,12 @@ function registerIpcHandlers(ipcMain) {
       const session = activeSessions.get(sessionId);
       if (!session) throw new Error('No multi-LLM session: ' + sessionId);
 
+      // Use the module-scoped mcpManager singleton (line 17). See provider:send for context.
       let toolHandler = null;
       try {
         const { McpBridge } = require('./mcp/mcp-bridge');
-        const mcpManager = require('./mcp/mcp-manager');
-        if (mcpManager.instance) {
-          toolHandler = new McpBridge(mcpManager.instance).createToolHandler();
+        if (mcpManager) {
+          toolHandler = new McpBridge(mcpManager).createToolHandler();
         }
       } catch (e) { /* MCP not available */ }
 
@@ -922,7 +978,9 @@ function registerIpcHandlers(ipcMain) {
 
       run(`git add "logs/${filename}"`);
       run(`git commit -m "Upload diagnostic log ${timestamp}"`);
-      run('git push origin main');
+      // Push the current branch, not `main` — pushing HEAD avoids overwriting an
+      // unrelated branch when the user is on a feature branch.
+      run('git push origin HEAD');
 
       return { success: true, filename, message: `Log uploaded: ${filename}` };
     } catch (err) {
@@ -1578,6 +1636,18 @@ function registerIpcHandlers(ipcMain) {
     db
   });
 
+  // Crash recovery: mark targets stuck in 'running'/'starting'/'active' (from a
+  // previous app session that died before resetting them) as 'crashed' so the
+  // UI doesn't show ghost runs forever. Run-once on each launch.
+  try {
+    const rec = researchEngine.recoverFromCrash();
+    if (rec.recovered > 0) {
+      console.log(`[ResearchEngine] Crash recovery: marked ${rec.recovered} orphaned target(s) as crashed`);
+    }
+  } catch (e) {
+    console.warn('[ResearchEngine] Crash recovery skipped:', e.message);
+  }
+
   // Initialize micro-ingest with OV client
   const microIngest = require('./openviking/ov-micro-ingest');
   microIngest.init(ovClient);
@@ -2034,6 +2104,13 @@ async function startHeadlessResearch(config, getMainWindow, notifier) {
   });
 
   return { ...result, mode: 'headless' };
+}
+
+// ── Event Log + Metrics Handlers ─────────────────────────
+// Extracted to src/main/ipc/observability.js as the first step of the
+// ipc-handlers.js monolith split (see src/main/ipc/README.md).
+function _registerLogHandlers(ipcMain) {
+  require('./ipc/observability').register(ipcMain);
 }
 
 function cleanup() {
