@@ -364,6 +364,23 @@ contextBridge.exposeInMainWorld('api', {
     snapshot: () => ipcRenderer.invoke('metrics:snapshot'),
   },
 
+  // ── Hermes Agent Bridge ─────────────────────────────────
+  // Lets renderer code (or future agents) delegate work to the local Hermes
+  // gateway on :8642 without re-implementing the OpenAI-compatible plumbing.
+  hermes: {
+    health: () => ipcRenderer.invoke('hermes:health'),
+    capabilities: () => ipcRenderer.invoke('hermes:capabilities'),
+    models: () => ipcRenderer.invoke('hermes:models'),
+    chat: (prompt, opts) => ipcRenderer.invoke('hermes:chat', prompt, opts),
+    delegate: (opts) => ipcRenderer.invoke('hermes:delegate', opts),
+    stopRun: (runId) => ipcRenderer.invoke('hermes:stopRun', runId),
+    onRunEvent: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('hermes:runEvent', handler);
+      return () => ipcRenderer.removeListener('hermes:runEvent', handler);
+    }
+  },
+
   // ── Hook Events (Claude Code lifecycle) ──────────────────
   hooks: {
     recent: (limit) => ipcRenderer.invoke('hooks:recent', limit),

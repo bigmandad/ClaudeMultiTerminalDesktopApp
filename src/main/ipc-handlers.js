@@ -31,6 +31,7 @@ function registerIpcHandlers(ipcMain, dependencies = {}) {
 
   // Wire up the structured event log handlers + push subscription
   _registerLogHandlers(ipcMain);
+  _registerHermesHandlers(ipcMain);
 
   // ── PTY Handlers ──────────────────────────────────────────
 
@@ -2111,6 +2112,13 @@ async function startHeadlessResearch(config, getMainWindow, notifier) {
 // ipc-handlers.js monolith split (see src/main/ipc/README.md).
 function _registerLogHandlers(ipcMain) {
   require('./ipc/observability').register(ipcMain);
+}
+
+// ── Hermes Bridge Handlers ───────────────────────────────
+// Delegated to src/main/ipc/hermes.js — wires OmniClaw → Hermes Agent gateway
+// on :8642 for chat completions and async /v1/runs delegation.
+function _registerHermesHandlers(ipcMain) {
+  require('./ipc/hermes').register(ipcMain);
 }
 
 function cleanup() {

@@ -424,6 +424,35 @@ function _coreProbes(deps) {
   const homeDir = os.homedir();
 
   return [
+    // Hermes Agent bridge — OmniClaw can delegate tasks to a local Hermes
+    // gateway. If Hermes is installed but its gateway is down, surface that
+    // so the user knows the bridge is one-way (OmniClaw → Hermes won't work).
+    {
+      name: 'hermes',
+      label: 'Hermes Agent Bridge',
+      check: async () => {
+        // Hermes is optional — don't show as "down" if not installed.
+        const hermesDir = path.join(homeDir, '.hermes');
+        if (!fs.existsSync(hermesDir)) {
+          return { status: 'healthy', message: 'Not installed (optional bridge)', fixable: false };
+        }
+        const result = await httpCheck('http://localhost:8642/health');
+        if (!result.ok) {
+          return { status: 'degraded', message: 'Hermes installed but gateway unreachable on :8642', fixable: false };
+        }
+        // Pull detailed status too so the panel shows useful context
+        const detailed = await httpCheck('http://localhost:8642/health/detailed');
+        if (detailed.ok) {
+          try {
+            const d = JSON.parse(detailed.data);
+            const platforms = Object.keys(d.platforms || {}).join(', ');
+            const agents = d.active_agents ?? 0;
+            return { status: 'healthy', message: `Gateway up · ${agents} active agent(s) · platforms: ${platforms || 'none'}`, fixable: false };
+          } catch {}
+        }
+        return { status: 'healthy', message: 'Gateway up on :8642', fixable: false };
+      },
+    },
     // Native modules — the better-sqlite3 / node-pty binaries can mismatch
     // Electron's ABI after a `npm install`. Surface this so the user sees a
     // toast instead of a silent crash.

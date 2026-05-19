@@ -162,6 +162,51 @@ test('metrics compute p50/p95 and rate-per-hour', () => {
   assert.equal(snap.counters.smoke_counter.total, 2);
 });
 
+// ── Hermes bridge ────────────────────────────────────────
+test('HermesProvider exports the provider contract', () => {
+  const { HermesProvider } = require('../src/main/providers/hermes-provider');
+  const p = new HermesProvider();
+  assert.equal(p.id, 'hermes');
+  assert.equal(typeof p.displayName, 'string');
+  assert.equal(typeof p.createSession, 'function');
+  assert.equal(typeof p.sendMessage, 'function');
+  assert.equal(typeof p.cancelGeneration, 'function');
+  assert.equal(typeof p.destroy, 'function');
+  assert.equal(typeof p.delegate, 'function');
+  assert.equal(typeof p.stopRun, 'function');
+});
+
+test('HermesProvider is registered in provider-registry', () => {
+  const { providerRegistry } = require('../src/main/providers/provider-registry');
+  providerRegistry.init({ credentialStore: null });
+  const hermes = providerRegistry.getProvider('hermes');
+  assert.ok(hermes, 'hermes provider not registered');
+  const list = providerRegistry.listProviders();
+  const ids = list.map(p => p.id);
+  assert.ok(ids.includes('hermes'), `hermes missing from listProviders: ${ids.join(', ')}`);
+});
+
+test('Hermes bridge: live /health probe (skipped if Hermes is down)', async (t) => {
+  const http = require('node:http');
+  const ok = await new Promise(resolve => {
+    const req = http.get('http://localhost:8642/health', { timeout: 1500 }, (res) => {
+      resolve(res.statusCode === 200);
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+  if (!ok) {
+    t.skip('Hermes gateway not running on :8642 — skipping live test');
+    return;
+  }
+  const { HermesProvider } = require('../src/main/providers/hermes-provider');
+  const p = new HermesProvider();
+  const probed = await p._probe();
+  assert.equal(probed, true);
+  const models = await p.models();
+  assert.ok(Array.isArray(models) && models.length > 0);
+});
+
 // ── End-to-end self-improvement infrastructure ───────────
 test('self-improvement infrastructure is reachable end-to-end', () => {
   // Reach every module the AutoResearch loop touches so a missing require or
@@ -182,6 +227,7 @@ test('self-improvement infrastructure is reachable end-to-end', () => {
   require('../src/main/providers/openai-provider');
   require('../src/main/providers/gemini-provider');
   require('../src/main/providers/ollama-provider');
+  require('../src/main/providers/hermes-provider');
   require('../src/main/providers/tool-loop');
   require('../src/main/health/watchdog');
   require('../src/main/health/probes');

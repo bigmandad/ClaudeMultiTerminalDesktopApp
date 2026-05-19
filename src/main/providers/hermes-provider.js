@@ -85,14 +85,15 @@ class HermesProvider extends ProviderInterface {
   async createSession(sessionId, opts = {}) {
     const messages = [];
     if (opts.systemPrompt) messages.push({ role: 'system', content: opts.systemPrompt });
-    // X-Hermes-Session-Id has to be a stable string. Use the OmniClaw session
-    // ID directly so Hermes maintains continuity across turns of the same
-    // OmniClaw session.
+    // X-Hermes-Session-Id triggers Hermes's "session continuation" feature
+    // which requires the gateway to be running with API_SERVER_KEY set. We
+    // already track history client-side in `messages`, so the header is
+    // opt-in only — caller passes `hermesSessionId` explicitly to use it.
     this._sessions.set(sessionId, {
       messages,
       model: opts.model || 'hermes-agent',
       abortController: null,
-      hermesSessionId: opts.hermesSessionId || sessionId,
+      hermesSessionId: opts.hermesSessionId || null,
       systemPrompt: opts.systemPrompt || '',
     });
   }
@@ -119,8 +120,14 @@ class HermesProvider extends ProviderInterface {
 
       const headers = {
         'Content-Type': 'application/json',
-        'X-Hermes-Session-Id': session.hermesSessionId,
       };
+      // Only attach the session header when the caller explicitly opted in.
+      // Hermes rejects requests with X-Hermes-Session-Id unless API_SERVER_KEY
+      // is configured on the gateway (HTTP 403, "Session continuation requires
+      // API key authentication"). For stateless chat we don't need it.
+      if (session.hermesSessionId) {
+        headers['X-Hermes-Session-Id'] = session.hermesSessionId;
+      }
 
       const generator = this._streamCompletions('/v1/chat/completions', body, headers, abortController.signal);
 
@@ -172,6 +179,9 @@ class HermesProvider extends ProviderInterface {
     if (!message) throw new Error('hermes.delegate: message required');
     const model = opts.model || 'hermes-agent';
     const headers = { 'Content-Type': 'application/json' };
+    // Session headers require API_SERVER_KEY auth on the Hermes side; only
+    // attach when the caller explicitly passes them so the default path works
+    // out of the box on a vanilla Hermes install.
     if (opts.sessionId)  headers['X-Hermes-Session-Id']  = opts.sessionId;
     if (opts.sessionKey) headers['X-Hermes-Session-Key'] = opts.sessionKey;
 
