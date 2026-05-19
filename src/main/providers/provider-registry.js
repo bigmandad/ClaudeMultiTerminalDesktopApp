@@ -4,6 +4,7 @@ const { ClaudeProvider } = require('./claude-provider');
 const { OpenAIProvider } = require('./openai-provider');
 const { GeminiProvider } = require('./gemini-provider');
 const { OllamaProvider } = require('./ollama-provider');
+const { HermesProvider } = require('./hermes-provider');
 
 class ProviderRegistry {
   constructor() {
@@ -42,6 +43,17 @@ class ProviderRegistry {
     // Ollama — always available (local HTTP)
     const ollama = new OllamaProvider();
     this.providers.set(ollama.id, ollama);
+
+    // Hermes — local agent at http://localhost:8642 (no auth required)
+    // `configured` is determined lazily by probing /health on first listProviders call.
+    try {
+      const hermes = new HermesProvider();
+      this.providers.set(hermes.id, hermes);
+      // Warm the probe so configured flag is accurate by first UI render
+      hermes._probe().then(ok => { hermes._isConfigured = ok; hermes._configCheckAt = Date.now(); }).catch(() => {});
+    } catch (e) {
+      console.warn('[ProviderRegistry] Hermes provider unavailable:', e.message);
+    }
 
     console.log(`[ProviderRegistry] ${this.providers.size} providers registered:`,
       [...this.providers.keys()].join(', '));
